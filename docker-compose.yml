@@ -42,6 +42,40 @@ services:
     networks:
       - backend
 
+  users:
+    build:
+      context: ./services/users
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-users
+    environment:
+      DJANGO_SECRET_KEY: ${USERS_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,users
+      DB_NAME: users_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
+    ports:
+      - "${USERS_PORT:-8001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
+
 volumes:
   postgres_data:
   redis_data:

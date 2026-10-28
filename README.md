@@ -229,18 +229,19 @@ sequenceDiagram
 ```bash
 git clone https://github.com/vishant0815/shopverse.git
 cd shopverse
-cp .env.example .env        # then change the passwords
-docker compose up -d
+cp .env.example .env        # then change the passwords and secret keys
+docker compose up -d --build
 ```
 
-This starts the shared infrastructure:
+This starts:
 
 | Container | Port | Purpose |
 |---|---|---|
 | `shopverse-postgres` | 5432 | PostgreSQL, with one database per service (`users_db`, `products_db`, `orders_db`, `payments_db`, `inventory_db`) |
 | `shopverse-redis` | 6379 | Redis, password-protected, with append-only persistence |
+| `shopverse-users` | 8001 | [Users service](services/users/README.md): accounts, JWT auth, profiles, addresses |
 
-Check that both are healthy:
+Check that everything is healthy:
 
 ```bash
 docker compose ps
@@ -250,11 +251,13 @@ docker compose ps
 
 ## Testing
 
-Each service has its own test suite, run automatically in CI on every pull request.
+Each service has its own test suite, run against PostgreSQL inside Docker.
 
 ```bash
-docker compose run --rm users pytest
+docker compose run --rm users pytest    # 43 tests
 ```
+
+Tests will run automatically on every pull request once CI is added (see roadmap).
 
 ---
 
@@ -262,7 +265,7 @@ docker compose run --rm users pytest
 
 **Phase 1: Core platform**
 - [x] Monorepo scaffold and Docker Compose (PostgreSQL, Redis)
-- [ ] User service: signup, login, JWT, profiles, addresses
+- [x] User service: signup, login, JWT, profiles, addresses
 - [ ] Product service: catalogue, categories, variants
 - [ ] Cart and orders
 - [ ] Payments with Stripe test mode
