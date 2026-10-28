@@ -50,6 +50,7 @@ services:
     container_name: shopverse-users
     environment:
       DJANGO_SECRET_KEY: ${USERS_SECRET_KEY}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
       DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
       DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,users
       DB_NAME: users_db
@@ -61,6 +62,41 @@ services:
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
     ports:
       - "${USERS_PORT:-8001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  products:
+    build:
+      context: ./services/products
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-products
+    environment:
+      DJANGO_SECRET_KEY: ${PRODUCTS_SECRET_KEY}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,products
+      DB_NAME: products_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    ports:
+      - "${PRODUCTS_PORT:-8002}:8000"
     depends_on:
       postgres:
         condition: service_healthy

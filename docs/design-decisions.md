@@ -47,3 +47,21 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 **Why:** Custom user models must be set up before the first migration; changing later is painful. A single `role` field keeps authorisation simple and is copied into the JWT, so other services can check it. UUIDs can't be guessed or counted, and are safe to use in events across services.
 
 **Trade-off:** UUID indexes are larger than integer ones. At this scale that cost is small compared with the security and cross-service benefits.
+
+---
+
+## 006: Services verify JWTs themselves with a shared signing key
+
+**Decision:** Only the users service issues tokens. Every other service verifies the token's signature with the same `JWT_SIGNING_KEY` and trusts the `user_id` and `role` claims inside it.
+
+**Why:** No network call to the users service on every request, so the product catalogue keeps working even if the users service is slow or down. It also keeps the services decoupled: the product service has no user table at all.
+
+**Trade-off:** Every service holding the key could also sign tokens, and a role change only takes effect when the user's access token expires (at most 15 minutes). The next step would be asymmetric keys (RS256): the users service signs with a private key, and other services only get the public key, so they can verify but never issue tokens.
+
+---
+
+## 007: Prices on variants, stock in a separate service, soft deletes
+
+**Decision:** A product has variants (colour, size), and each variant has its own SKU and price. Stock is not stored in the product service. Products are archived, and variants and categories are deactivated, instead of being deleted.
+
+**Why:** Different sizes or storage options often cost different amounts, so the price belongs to the thing being bought. Stock changes far more often than catalogue data and needs locking during checkout, so it belongs to the inventory service. Orders will refer to products and SKUs long after they stop being sold, so those rows must not disappear.

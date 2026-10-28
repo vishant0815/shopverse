@@ -240,6 +240,13 @@ This starts:
 | `shopverse-postgres` | 5432 | PostgreSQL, with one database per service (`users_db`, `products_db`, `orders_db`, `payments_db`, `inventory_db`) |
 | `shopverse-redis` | 6379 | Redis, password-protected, with append-only persistence |
 | `shopverse-users` | 8001 | [Users service](services/users/README.md): accounts, JWT auth, profiles, addresses |
+| `shopverse-products` | 8002 | [Product service](services/products/README.md): categories, products, variants, filters; loads demo data |
+
+Try the catalogue straight away:
+
+```bash
+curl "http://localhost:8002/api/v1/products/?category=electronics&ordering=min_price"
+```
 
 Check that everything is healthy:
 
@@ -254,7 +261,8 @@ docker compose ps
 Each service has its own test suite, run against PostgreSQL inside Docker.
 
 ```bash
-docker compose run --rm users pytest    # 43 tests
+docker compose run --rm users pytest       # 43 tests
+docker compose run --rm products pytest    # 50 tests
 ```
 
 Tests will run automatically on every pull request once CI is added (see roadmap).
@@ -266,7 +274,7 @@ Tests will run automatically on every pull request once CI is added (see roadmap
 **Phase 1: Core platform**
 - [x] Monorepo scaffold and Docker Compose (PostgreSQL, Redis)
 - [x] User service: signup, login, JWT, profiles, addresses
-- [ ] Product service: catalogue, categories, variants
+- [x] Product service: catalogue, categories, variants
 - [ ] Cart and orders
 - [ ] Payments with Stripe test mode
 - [ ] Customer storefront (Next.js)
