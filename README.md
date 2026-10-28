@@ -203,6 +203,7 @@ sequenceDiagram
 ├── frontend/                # Next.js customer storefront
 ├── admin/                   # seller and admin panel
 ├── gateway/                 # API gateway configuration
+├── infra/                   # shared infrastructure (Postgres init scripts)
 ├── services/
 │   ├── users/
 │   ├── products/
@@ -221,15 +222,28 @@ sequenceDiagram
 
 ## Getting started
 
-> Setup instructions will be completed as the services are built.
+> Setup instructions will grow as the services are built.
 
 **Prerequisites:** Docker and Docker Compose.
 
 ```bash
-git clone <repository-url>
-cd <repository-folder>
-cp .env.example .env
-docker compose up --build
+git clone https://github.com/vishant0815/shopverse.git
+cd shopverse
+cp .env.example .env        # then change the passwords
+docker compose up -d
+```
+
+This starts the shared infrastructure:
+
+| Container | Port | Purpose |
+|---|---|---|
+| `shopverse-postgres` | 5432 | PostgreSQL, with one database per service (`users_db`, `products_db`, `orders_db`, `payments_db`, `inventory_db`) |
+| `shopverse-redis` | 6379 | Redis, password-protected, with append-only persistence |
+
+Check that both are healthy:
+
+```bash
+docker compose ps
 ```
 
 ---
@@ -247,7 +261,7 @@ docker compose run --rm users pytest
 ## Roadmap
 
 **Phase 1: Core platform**
-- [ ] Monorepo scaffold and Docker Compose (PostgreSQL, Redis)
+- [x] Monorepo scaffold and Docker Compose (PostgreSQL, Redis)
 - [ ] User service: signup, login, JWT, profiles, addresses
 - [ ] Product service: catalogue, categories, variants
 - [ ] Cart and orders
