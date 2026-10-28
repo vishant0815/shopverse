@@ -1,0 +1,45 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Django
+*.sqlite3
+staticfiles/
+media/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+build/
+npm-debug.log*
+yarn-error.log*
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Load test output
+load-tests/results/*.json
