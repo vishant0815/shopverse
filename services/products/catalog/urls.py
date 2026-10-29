@@ -13,5 +13,6 @@ product_children.register("variants", views.VariantViewSet, basename="variant")
 product_children.register("images", views.ImageViewSet, basename="image")
 
 urlpatterns = router.urls + [
+    path("variants/lookup/", views.VariantLookupView.as_view(), name="variant-lookup"),
     path("seller/products/<uuid:product_pk>/", include(product_children.urls)),
 ]

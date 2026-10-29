@@ -1,9 +1,12 @@
+import uuid
+
 from django.conf import settings
 from django.core.cache import cache
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .filters import ProductFilter
 from .models import Category, Product, ProductImage, ProductVariant
@@ -20,6 +23,7 @@ from .serializers import (
     ProductDetailSerializer,
     ProductListSerializer,
     ProductWriteSerializer,
+    VariantLookupSerializer,
     VariantSerializer,
 )
 from .signals import CATEGORY_TREE_CACHE_KEY
@@ -161,3 +165,40 @@ class VariantViewSet(ProductChildViewSet):
 class ImageViewSet(ProductChildViewSet):
     serializer_class = ImageSerializer
     model = ProductImage
+
+
+class VariantLookupView(APIView):
+    """Live price and availability for a set of variant ids.
+
+    Used by the orders service so prices always come from the catalogue, never
+    from the client. Only variants of published products are returned; anything
+    else is simply missing from the response.
+
+        GET /api/v1/variants/lookup/?ids=<uuid>,<uuid>
+    """
+
+    permission_classes = [permissions.AllowAny]
+    MAX_IDS = 100
+
+    def get(self, request):
+        raw = [i.strip() for i in request.query_params.get("ids", "").split(",") if i.strip()]
+        if not raw:
+            return Response({"detail": "Pass one or more variant ids in ?ids="}, status=400)
+        if len(raw) > self.MAX_IDS:
+            return Response({"detail": f"At most {self.MAX_IDS} ids per request."}, status=400)
+        try:
+            ids = [uuid.UUID(i) for i in raw]
+        except ValueError:
+            return Response({"detail": "Every id must be a UUID."}, status=400)
+
+        variants = (
+            ProductVariant.objects.filter(
+                id__in=ids,
+                is_active=True,
+                product__status=Product.Status.ACTIVE,
+                product__category__is_active=True,
+            )
+            .select_related("product")
+            .prefetch_related("product__images")
+        )
+        return Response({"results": VariantLookupSerializer(variants, many=True).data})

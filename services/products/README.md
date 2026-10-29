@@ -34,6 +34,7 @@ Base path: `/api/v1/`
 | GET | `products/{slug}/` | Product detail with active variants and images |
 | GET | `categories/` | Active categories (flat list) |
 | GET | `categories/tree/` | Active categories as a nested tree, cached in Redis |
+| GET | `variants/lookup/?ids=<id>,<id>` | Live price and details for up to 100 variants; used by the orders service. Variants that can't be bought are left out. |
 
 **Filters on `products/`:**
 
@@ -124,7 +125,7 @@ docker compose exec products python manage.py seed_catalog --reset  # recreate d
 docker compose run --rm products pytest
 ```
 
-50 tests cover browsing, every filter, sorting, pagination, N+1 protection, category caching, role checks, ownership, validation rules and forged tokens.
+56 tests cover browsing, the variant lookup, every filter, sorting, pagination, N+1 protection, category caching, role checks, ownership, validation rules and forged tokens.
 
 ## Configuration
 
