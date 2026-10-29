@@ -112,6 +112,40 @@ services:
     networks:
       - backend
 
+  orders:
+    build:
+      context: ./services/orders
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-orders
+    environment:
+      DJANGO_SECRET_KEY: ${ORDERS_SECRET_KEY}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,orders
+      DB_NAME: orders_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      PRODUCTS_SERVICE_URL: http://products:8000
+    ports:
+      - "${ORDERS_PORT:-8003}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      products:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - backend
+
 volumes:
   postgres_data:
   redis_data:

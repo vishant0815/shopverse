@@ -143,3 +143,25 @@ class ProductWriteSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         instance = Product.objects.with_listing_data().get(pk=instance.pk)
         return ProductDetailSerializer(instance, context={**self.context, "show_inactive": True}).data
+
+
+class VariantLookupSerializer(serializers.ModelSerializer):
+    """Everything the orders service needs to price and snapshot a cart line."""
+
+    variant_id = serializers.UUIDField(source="id")
+    product_id = serializers.UUIDField(source="product.id")
+    product_name = serializers.CharField(source="product.name")
+    product_slug = serializers.CharField(source="product.slug")
+    seller_id = serializers.UUIDField(source="product.seller_id")
+    thumbnail = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductVariant
+        fields = [
+            "variant_id", "sku", "colour", "size", "price", "compare_at_price",
+            "product_id", "product_name", "product_slug", "seller_id", "thumbnail",
+        ]
+
+    def get_thumbnail(self, obj):
+        images = list(obj.product.images.all())
+        return images[0].url if images else None

@@ -65,3 +65,31 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 **Decision:** A product has variants (colour, size), and each variant has its own SKU and price. Stock is not stored in the product service. Products are archived, and variants and categories are deactivated, instead of being deleted.
 
 **Why:** Different sizes or storage options often cost different amounts, so the price belongs to the thing being bought. Stock changes far more often than catalogue data and needs locking during checkout, so it belongs to the inventory service. Orders will refer to products and SKUs long after they stop being sold, so those rows must not disappear.
+
+---
+
+## 008: Idempotent checkout
+
+**Decision:** Checkout accepts an `Idempotency-Key` header. The key is stored on the order with a unique constraint per user. A repeated request with the same key returns the original order instead of creating another.
+
+**Why:** Networks drop responses and people double-click. Without this, a retry after a timeout creates a second order, and later a second payment. The key is checked three times: before doing any work, again after taking the cart lock (a duplicate may have been waiting on that lock while the first request finished), and finally by the database constraint if two requests still race.
+
+**Trade-off:** The client has to generate and send a key. That is standard practice (Stripe's API works the same way), and checkout still works without one.
+
+---
+
+## 009: Server-side pricing, snapshots, and no locks during network calls
+
+**Decision:** The cart stores only variant ids and quantities. At checkout the orders service fetches live prices from the product service, then locks the cart and verifies it hasn't changed before creating the order. The order copies names, SKUs, prices, sellers and the shipping address.
+
+**Why:** Prices from the client can't be trusted. Fetching prices before taking the lock means a slow product service never holds database rows locked; comparing the cart afterwards catches anything that changed in between. Snapshots keep orders accurate forever, even when products are renamed, repriced or archived.
+
+**Trade-off:** Checkout depends on the product service being up; if it isn't, checkout fails cleanly with `503` and the cart is kept. Later, Kafka events can keep a local price cache in the orders service to remove that dependency.
+
+---
+
+## 010: Order lifecycle as an explicit state machine
+
+**Decision:** The allowed status changes are listed in one place (`Order.TRANSITIONS`). Every change goes through `move_to()`, which writes a history row with who made the change.
+
+**Why:** Status bugs in e-commerce are expensive: shipping an unpaid order, or refunding a delivered one twice. One table of legal moves makes the rules easy to read, test and extend, and the history gives a full audit trail for support and disputes.
