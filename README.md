@@ -242,6 +242,7 @@ This starts:
 | `shopverse-users` | 8001 | [Users service](services/users/README.md): accounts, JWT auth, profiles, addresses |
 | `shopverse-products` | 8002 | [Product service](services/products/README.md): categories, products, variants, filters; loads demo data |
 | `shopverse-orders` | 8003 | [Orders service](services/orders/README.md): cart, idempotent checkout, order lifecycle |
+| `shopverse-payments` | 8004 | [Payments service](services/payments/README.md): Stripe test mode or a fake provider; API docs at `/docs` |
 
 Try the catalogue straight away:
 
@@ -264,7 +265,8 @@ Each service has its own test suite, run against PostgreSQL inside Docker.
 ```bash
 docker compose run --rm users pytest       # 43 tests
 docker compose run --rm products pytest    # 56 tests
-docker compose run --rm orders pytest      # 58 tests
+docker compose run --rm orders pytest      # 68 tests
+docker compose run --rm payments pytest    # 46 tests
 ```
 
 Tests will run automatically on every pull request once CI is added (see roadmap).
@@ -278,7 +280,7 @@ Tests will run automatically on every pull request once CI is added (see roadmap
 - [x] User service: signup, login, JWT, profiles, addresses
 - [x] Product service: catalogue, categories, variants
 - [x] Cart and orders
-- [ ] Payments with Stripe test mode
+- [x] Payments with Stripe test mode
 - [ ] Customer storefront (Next.js)
 - [ ] Admin panel
 

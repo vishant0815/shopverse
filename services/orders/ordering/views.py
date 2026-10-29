@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from . import catalog
 from .checkout import CheckoutError, place_order
 from .models import Cart, CartItem, Order, OrderItem
-from .permissions import IsAdmin, IsCustomer, IsSeller, user_id_of
+from .permissions import IsAdmin, IsCustomer, IsSeller, IsService, user_id_of
 from .pricing import price_lines, totals_for
 from .serializers import (
     AddToCartSerializer,
@@ -16,6 +16,7 @@ from .serializers import (
     CheckoutSerializer,
     OrderDetailSerializer,
     OrderListSerializer,
+    PaymentConfirmedSerializer,
     SellerOrderItemSerializer,
     TransitionSerializer,
     UpdateCartItemSerializer,
@@ -262,3 +263,36 @@ class AdminTransitionView(APIView):
             order.move_to(new_status, changed_by=user_id_of(request), note=serializer.validated_data["note"])
         order = Order.objects.prefetch_related("items", "history").get(pk=order.pk)
         return Response(OrderDetailSerializer(order).data)
+
+
+class PaymentConfirmedView(APIView):
+    """Called by the payments service once the payment provider confirms a payment.
+
+    Safe to call more than once: an order that is already paid simply returns 200.
+    The amount is checked against the order total, so a wrong amount can never mark an order paid.
+    """
+
+    permission_classes = [IsService]
+
+    def post(self, request, number):
+        serializer = PaymentConfirmedSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        with transaction.atomic():
+            order = get_object_or_404(Order.objects.select_for_update(), number=number)
+            if data["amount"] != order.total or data["currency"].upper() != order.currency:
+                return Response(
+                    {"code": "amount_mismatch", "detail": "Payment amount doesn't match the order total.",
+                     "order_total": str(order.total), "currency": order.currency},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if order.status == Order.Status.PENDING_PAYMENT:
+                order.move_to(Order.Status.PAID, changed_by=None, note=f"Payment {data['payment_id']} confirmed")
+            elif order.status == Order.Status.CANCELLED:
+                return Response(
+                    {"code": "order_cancelled", "detail": "The order was cancelled before payment completed."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            # paid, shipped or delivered: already handled, nothing to do.
+        return Response({"number": order.number, "status": order.status})

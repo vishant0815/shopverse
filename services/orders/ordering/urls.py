@@ -14,4 +14,6 @@ urlpatterns = [
     path("admin/orders/", views.AdminOrderListView.as_view(), name="admin-orders"),
     path("admin/orders/<str:number>/", views.AdminOrderDetailView.as_view(), name="admin-order"),
     path("admin/orders/<str:number>/transition/", views.AdminTransitionView.as_view(), name="admin-transition"),
+    path("internal/orders/<str:number>/payment-confirmed/", views.PaymentConfirmedView.as_view(),
+         name="payment-confirmed"),
 ]

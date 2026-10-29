@@ -45,7 +45,7 @@ stateDiagram-v2
     cancelled --> [*]
 ```
 
-Any other move is rejected with `409`. Every change is recorded in the order's history with who made it and an optional note. Customers can cancel while an order is `pending_payment` or `paid`. Admins move orders along; once the payment service exists it will mark orders as `paid`.
+Any other move is rejected with `409`. Every change is recorded in the order's history with who made it and an optional note. Customers can cancel while an order is `pending_payment` or `paid`. The [payments service](../payments/README.md) marks orders as `paid`; admins move them along after that.
 
 ## API
 
@@ -107,6 +107,14 @@ Checkout errors carry a `code`:
 | GET | `admin/orders/{number}/` | Any order |
 | POST | `admin/orders/{number}/transition/` | `{status, note}` to move an order along |
 
+### Internal (role `service`)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `internal/orders/{number}/payment-confirmed/` | Called by the payments service: `{payment_id, amount, currency}`. Marks a `pending_payment` order as `paid`. Safe to repeat. Returns `409 amount_mismatch` if the amount or currency doesn't match the order, and `409 order_cancelled` if the order was cancelled first. |
+
+Customers can't get the `service` role, so they can't call this.
+
 ## Rules enforced
 
 - Up to 10 of one item and 50 lines per cart (configurable).
@@ -129,7 +137,7 @@ The API is on http://localhost:8003.
 docker compose run --rm orders pytest
 ```
 
-58 tests, run against PostgreSQL with a fake product service: cart behaviour and limits, server-side pricing, shipping, every checkout error, idempotency (including a duplicate that waits on the lock), cart changes mid-checkout, price protection, snapshots, every legal and illegal status change, ownership, seller privacy, database constraints and HTTP failures when calling the product service.
+68 tests, run against PostgreSQL with a fake product service: cart behaviour and limits, server-side pricing, shipping, every checkout error, idempotency (including a duplicate that waits on the lock), cart changes mid-checkout, price protection, snapshots, every legal and illegal status change, ownership, seller privacy, payment confirmation from the payments service, database constraints and HTTP failures when calling the product service.
 
 ## Configuration
 
