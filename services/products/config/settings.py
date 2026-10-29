@@ -31,6 +31,10 @@ JWT_SIGNING_KEY = env("JWT_SIGNING_KEY", required=True)
 if not DEBUG and len(JWT_SIGNING_KEY) < 32:
     raise ImproperlyConfigured("JWT_SIGNING_KEY must be at least 32 characters")
 
+# Django signs sessions, CSRF tokens and password-reset links with SECRET_KEY.
+if not DEBUG and (len(SECRET_KEY) < 32 or SECRET_KEY.startswith("change-me")):
+    raise ImproperlyConfigured("DJANGO_SECRET_KEY must be a random string of at least 32 characters")
+
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 
 INSTALLED_APPS = [

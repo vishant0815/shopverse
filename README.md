@@ -204,6 +204,7 @@ sequenceDiagram
 ├── admin/                   # seller and admin panel
 ├── gateway/                 # API gateway configuration
 ├── infra/                   # shared infrastructure (Postgres init scripts)
+├── scripts/                 # developer helpers (e.g. create_env.py)
 ├── services/
 │   ├── users/
 │   ├── products/
@@ -229,7 +230,7 @@ sequenceDiagram
 ```bash
 git clone https://github.com/vishant0815/shopverse.git
 cd shopverse
-cp .env.example .env        # then change the passwords and secret keys
+python scripts/create_env.py   # writes .env with random passwords and secret keys
 docker compose up -d --build
 ```
 
