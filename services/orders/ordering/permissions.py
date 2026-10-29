@@ -32,3 +32,12 @@ class IsAdmin(BasePermission):
 
     def has_permission(self, request, view):
         return role_of(request) == "admin"
+
+
+class IsService(BasePermission):
+    """Other Shopverse services (e.g. payments) calling with a short-lived service token."""
+
+    message = "Only internal services can do this."
+
+    def has_permission(self, request, view):
+        return role_of(request) == "service"

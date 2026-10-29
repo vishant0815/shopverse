@@ -93,3 +93,23 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 **Decision:** The allowed status changes are listed in one place (`Order.TRANSITIONS`). Every change goes through `move_to()`, which writes a history row with who made the change.
 
 **Why:** Status bugs in e-commerce are expensive: shipping an unpaid order, or refunding a delivered one twice. One table of legal moves makes the rules easy to read, test and extend, and the history gives a full audit trail for support and disputes.
+
+---
+
+## 011: Payments in FastAPI behind a provider interface
+
+**Decision:** The payments service is written in FastAPI with SQLAlchemy and Alembic, unlike the Django services. Stripe sits behind a small `PaymentProvider` interface, with a fake provider for local use.
+
+**Why:** Payments is a small, focused service with no admin screens, so Django's extras aren't needed. FastAPI gives typed request validation and generated API docs. Using two frameworks also mirrors real companies, where services are often built with different stacks. The provider interface means anyone can clone the repository and complete a payment without a Stripe account, tests need no network access, and adding another provider (e.g. PayPal) doesn't touch the payment logic.
+
+**Trade-off:** Two frameworks means two sets of conventions to maintain.
+
+---
+
+## 012: Webhooks as the source of truth for payment success
+
+**Decision:** An order is marked paid only when a signed Stripe webhook says so, never because the browser reports success. Every event id is stored so duplicates are ignored. If the orders service can't be reached, the webhook answers `503` and saves nothing.
+
+**Why:** The browser can be closed, lose its connection, or be tampered with; Stripe's signed webhook can't. Stripe delivers events at least once and retries until it gets a `2xx`, so the handler must be idempotent, and returning `503` on failure turns Stripe's retries into free, automatic recovery.
+
+**Trade-off:** There's a short delay between the customer paying and the order showing as paid. The next step is to publish a `payment.succeeded` event to Kafka instead of calling the orders service directly, which removes the direct dependency between the two services.

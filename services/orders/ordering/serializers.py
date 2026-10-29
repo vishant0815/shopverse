@@ -109,3 +109,9 @@ class SellerOrderItemSerializer(serializers.ModelSerializer):
             "order_number", "order_status", "ordered_at", "sku", "product_name",
             "colour", "size", "unit_price", "quantity", "line_total",
         ]
+
+
+class PaymentConfirmedSerializer(serializers.Serializer):
+    payment_id = serializers.CharField(max_length=100)
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
+    currency = serializers.CharField(max_length=3)
