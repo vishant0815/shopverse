@@ -200,7 +200,7 @@ sequenceDiagram
 ├── docker-compose.yml       # runs the full platform locally
 ├── .env.example             # environment variables template
 ├── .github/workflows/       # CI pipelines
-├── frontend/                # Next.js customer storefront
+├── frontend/                # Next.js storefront (also proxies API calls)
 ├── admin/                   # seller and admin panel
 ├── gateway/                 # API gateway configuration
 ├── infra/                   # shared infrastructure (Postgres init scripts)
@@ -244,6 +244,9 @@ This starts:
 | `shopverse-products` | 8002 | [Product service](services/products/README.md): categories, products, variants, filters; loads demo data |
 | `shopverse-orders` | 8003 | [Orders service](services/orders/README.md): cart, idempotent checkout, order lifecycle |
 | `shopverse-payments` | 8004 | [Payments service](services/payments/README.md): Stripe test mode or a fake provider; API docs at `/docs` |
+| `shopverse-frontend` | 3000 | [Storefront](frontend/README.md): the website, and the single entry point for the browser |
+
+Then open **http://localhost:3000**, create an account, add something to your basket, check out and pay with the test card.
 
 Try the catalogue straight away:
 
@@ -282,7 +285,7 @@ Tests will run automatically on every pull request once CI is added (see roadmap
 - [x] Product service: catalogue, categories, variants
 - [x] Cart and orders
 - [x] Payments with Stripe test mode
-- [ ] Customer storefront (Next.js)
+- [x] Customer storefront (Next.js)
 - [ ] Admin panel
 
 **Phase 2: Scale and marketplace**

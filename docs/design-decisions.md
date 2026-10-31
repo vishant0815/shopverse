@@ -113,3 +113,13 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 **Why:** The browser can be closed, lose its connection, or be tampered with; Stripe's signed webhook can't. Stripe delivers events at least once and retries until it gets a `2xx`, so the handler must be idempotent, and returning `503` on failure turns Stripe's retries into free, automatic recovery.
 
 **Trade-off:** There's a short delay between the customer paying and the order showing as paid. The next step is to publish a `payment.succeeded` event to Kafka instead of calling the orders service directly, which removes the direct dependency between the two services.
+
+---
+
+## 013: The storefront as the browser's only entry point
+
+**Decision:** The browser talks only to the Next.js storefront. Its rewrites forward `/api/v1/...` paths, unchanged, to the right service. Catalogue pages are rendered on the server; signed-in pages run in the browser.
+
+**Why:** One origin means no CORS rules to get wrong, and the refresh cookie (scoped to `/api/v1/auth/`) works without changes because paths are forwarded as they are. Server rendering makes product pages fast and readable by search engines, while basket and order pages depend on the signed-in user and gain nothing from it.
+
+**Trade-off:** The storefront is now also a simple gateway, so it doesn't do what a real one would: rate limiting across all services, request logging, or TLS termination. A dedicated API gateway (Nginx or Kong) is on the roadmap and would take over this role, leaving the storefront to only render pages.

@@ -181,6 +181,36 @@ services:
     networks:
       - backend
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+    container_name: shopverse-frontend
+    environment:
+      # Used by server-rendered pages; browser requests go through the build-time rewrites.
+      PRODUCTS_API_URL: http://products:8000
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      users:
+        condition: service_healthy
+      products:
+        condition: service_healthy
+      orders:
+        condition: service_healthy
+      payments:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+
 volumes:
   postgres_data:
   redis_data:

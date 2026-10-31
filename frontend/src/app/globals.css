@@ -1,0 +1,92 @@
+@import "tailwindcss";
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/instrument-sans";
+
+/* Design tokens. The one loud element is the yellow price sticker; everything else is quiet. */
+@theme {
+  --color-paper: #f7f8fa;      /* page background: cool, not cream */
+  --color-shelf: #eceff4;      /* behind product photos */
+  --color-line: #dde1ea;
+  --color-ink: #1b1f3b;        /* text: deep indigo */
+  --color-ink-soft: #565b78;
+  --color-cobalt: #2f5bea;     /* actions */
+  --color-cobalt-deep: #1f43bd;
+  --color-sticker: #ffd23f;    /* price tags */
+  --color-sale: #e23d28;       /* discounts and errors */
+  --color-ok: #1d8a5b;
+
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-cobalt);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* The price sticker: a tag with a punched hole, like the ones on market stalls. */
+.price-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.3em 0.75em 0.3em 1.35em;
+  background: var(--color-sticker);
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  clip-path: polygon(0.7em 0, 100% 0, 100% 100%, 0.7em 100%, 0 50%);
+}
+.price-tag::before {
+  content: "";
+  position: absolute;
+  left: 0.6em;
+  top: 50%;
+  width: 0.32em;
+  height: 0.32em;
+  margin-top: -0.16em;
+  border-radius: 50%;
+  background: var(--color-paper);
+}
+.price-tag .was {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 0.75em;
+  text-decoration: line-through;
+  color: var(--color-ink-soft);
+}
+
+.sale-sticker {
+  display: inline-block;
+  padding: 0.2em 0.55em;
+  background: var(--color-sale);
+  color: white;
+  font-weight: 700;
+  font-size: 0.8rem;
+  border-radius: 999px;
+  transform: rotate(-6deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tag-swing { animation: tag-swing 0.6s ease-out both; transform-origin: 0 50%; }
+  @keyframes tag-swing {
+    0% { transform: rotate(-8deg); }
+    60% { transform: rotate(3deg); }
+    100% { transform: rotate(0); }
+  }
+}

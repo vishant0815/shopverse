@@ -1,7 +1,17 @@
 from django.contrib.auth import authenticate, password_validation
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .models import Address, User
+
+
+def check_password_strength(password, user, field):
+    """Run Django's password rules and report problems against the password field,
+    so a form can show them next to the right input."""
+    try:
+        password_validation.validate_password(password, user=user)
+    except DjangoValidationError as error:
+        raise serializers.ValidationError({field: list(error.messages)})
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -37,7 +47,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             first_name=attrs.get("first_name", ""),
             last_name=attrs.get("last_name", ""),
         )
-        password_validation.validate_password(attrs["password"], user=candidate)
+        check_password_strength(attrs["password"], candidate, field="password")
         return attrs
 
     def create(self, validated_data):
@@ -73,7 +83,7 @@ class ChangePasswordSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs):
-        password_validation.validate_password(attrs["new_password"], user=self.context["request"].user)
+        check_password_strength(attrs["new_password"], self.context["request"].user, field="new_password")
         return attrs
 
 
