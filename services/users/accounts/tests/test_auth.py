@@ -72,6 +72,9 @@ class TestRegister:
         response = api_client.post(REGISTER, register_payload(password=weak))
 
         assert response.status_code == 400
+        # Reported against the field, so forms can show it next to the password input.
+        assert "password" in response.data
+        assert "non_field_errors" not in response.data
 
 
 class TestLogin:

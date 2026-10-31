@@ -61,6 +61,7 @@ class TestChangePassword:
         response = auth_client.post(CHANGE_PASSWORD, {"current_password": PASSWORD, "new_password": "123"})
 
         assert response.status_code == 400
+        assert "new_password" in response.data
 
     def test_changing_password_ends_current_refresh_session(self, auth_client):
         token = auth_client.cookies[settings.REFRESH_COOKIE_NAME].value
