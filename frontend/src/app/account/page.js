@@ -32,7 +32,7 @@ function Profile() {
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
   return (
-    <form onSubmit={save} className="space-y-4">
+    <form onSubmit={save} className="raised space-y-5 p-6">
       <h2 className="text-2xl font-bold">Your details</h2>
       <p className="text-ink-soft">
         Signed in as {user.email}
@@ -87,7 +87,7 @@ function Addresses() {
   }
 
   return (
-    <section className="space-y-4" aria-labelledby="addresses-heading">
+    <section className="raised space-y-5 p-6" aria-labelledby="addresses-heading">
       <h2 id="addresses-heading" className="text-2xl font-bold">Saved addresses</h2>
       <Notice>{error}</Notice>
       {addresses === null ? (
@@ -97,28 +97,28 @@ function Addresses() {
       ) : (
         <ul className="space-y-3">
           {addresses.map((address) => (
-            <li key={address.id} className="flex flex-wrap items-start justify-between gap-3 border border-line bg-white p-4">
+            <li key={address.id} className="raised-sm flex flex-wrap items-start justify-between gap-3 p-4">
               <div>
                 <p className="font-semibold">
                   {address.full_name}
-                  {address.is_default && <span className="ml-2 rounded-sm bg-sticker px-1.5 text-sm">Default</span>}
+                  {address.is_default && <span className="ml-2 rounded-full px-2.5 py-0.5 text-xs font-bold text-accent shadow-[inset_0_0_0_2px_var(--accent)]">Default</span>}
                 </p>
                 <p className="text-ink-soft">{[address.line1, address.line2, address.city, address.postcode].filter(Boolean).join(", ")}</p>
               </div>
               <div className="flex gap-4 text-sm">
                 {!address.is_default && (
-                  <button onClick={() => act(address.id, { method: "PATCH", body: { is_default: true } })} className="text-cobalt hover:underline">
+                  <button onClick={() => act(address.id, { method: "PATCH", body: { is_default: true } })} className="font-medium text-accent hover:underline">
                     Make default
                   </button>
                 )}
-                <button onClick={() => act(address.id, { method: "DELETE" })} className="text-sale hover:underline">Delete</button>
+                <button onClick={() => act(address.id, { method: "DELETE" })} className="font-medium text-power hover:underline">Delete</button>
               </div>
             </li>
           ))}
         </ul>
       )}
       {adding ? (
-        <form onSubmit={add} className="space-y-4 border border-ink bg-white p-5">
+        <form onSubmit={add} className="inset space-y-5 p-5">
           <AddressForm value={draft} onChange={setDraft} errors={errors} />
           <div className="flex gap-3">
             <Button type="submit">Save address</Button>
@@ -135,8 +135,8 @@ function Addresses() {
 export default function AccountPage() {
   return (
     <RequireSignIn>
-      <div className="max-w-3xl space-y-12">
-        <h1 className="text-4xl font-extrabold">Your account</h1>
+      <div className="max-w-3xl space-y-10">
+        <h1 className="text-4xl font-extrabold sm:text-5xl">Your account</h1>
         <Profile />
         <Addresses />
       </div>

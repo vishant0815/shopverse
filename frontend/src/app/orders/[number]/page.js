@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import PaymentPanel from "@/components/PaymentPanel";
+import { LinePrice } from "@/components/Price";
 import RequireSignIn from "@/components/RequireSignIn";
 import StatusBadge from "@/components/StatusBadge";
 import { Button, Notice } from "@/components/ui";
@@ -47,7 +48,7 @@ function OrderDetail() {
     return (
       <div className="py-24 text-center">
         <p className="text-ink-soft">{error || "Loading order…"}</p>
-        {error && <Link href="/orders" className="mt-3 inline-block text-cobalt hover:underline">Back to your orders</Link>}
+        {error && <Link href="/orders" className="mt-3 inline-block font-medium text-accent hover:underline">Back to your orders</Link>}
       </div>
     );
   }
@@ -59,18 +60,21 @@ function OrderDetail() {
     <div className="space-y-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <Link href="/orders" className="text-sm text-cobalt hover:underline">Your orders</Link>
-          <h1 className="mt-1 text-4xl font-extrabold">Order {order.number}</h1>
-          <p className="mt-1 text-ink-soft">Placed {dateTime(order.created_at)}</p>
+          <Link href="/orders" className="text-sm font-medium text-accent hover:underline">Your orders</Link>
+          <h1 className="mt-1 text-3xl font-extrabold sm:text-5xl">Order {order.number}</h1>
+          <p className="mt-2 text-ink-soft">Placed {dateTime(order.created_at)}</p>
         </div>
         <StatusBadge status={order.status} />
       </div>
 
       {order.status !== "cancelled" ? (
-        <ol className="grid grid-cols-4 gap-2" aria-label="Order progress">
+        <ol className="grid grid-cols-4 gap-3" aria-label="Order progress">
           {JOURNEY.map((step, index) => (
-            <li key={step} className={`border-t-4 pt-2 text-sm ${index <= reached ? "border-cobalt font-semibold" : "border-line text-ink-soft"}`}>
-              {orderStatus(step)}
+            <li key={step} className="text-sm" aria-current={index === reached ? "step" : undefined}>
+              <span className="inset block h-3 overflow-hidden rounded-full p-0.5">
+                <span className={`block h-full rounded-full ${index <= reached ? "bg-[image:var(--metal)]" : ""}`} />
+              </span>
+              <span className={`mt-2 block ${index <= reached ? "font-semibold" : "text-ink-soft"}`}>{orderStatus(step)}</span>
             </li>
           ))}
         </ol>
@@ -82,42 +86,45 @@ function OrderDetail() {
 
       {order.status === "pending_payment" && <PaymentPanel order={order} onPaid={load} />}
 
-      <div className="grid gap-10 md:grid-cols-[1fr_300px]">
-        <section aria-labelledby="items-heading">
-          <h2 id="items-heading" className="mb-4 text-2xl font-bold">Items</h2>
-          <ul className="divide-y divide-line border-y border-line">
+      <div className="grid gap-8 md:grid-cols-[1fr_320px]">
+        <section aria-labelledby="items-heading" className="raised p-6">
+          <h2 id="items-heading" className="mb-5 text-2xl font-bold">Items</h2>
+          <ul className="space-y-4">
             {order.items.map((item) => (
-              <li key={item.sku} className="flex gap-4 py-4">
-                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-sm bg-shelf">
+              <li key={item.sku} className="flex items-center gap-4">
+                <div className="inset h-20 w-20 shrink-0 overflow-hidden">
                   {item.thumbnail && (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.thumbnail} alt="" className="h-full w-full object-cover mix-blend-multiply" />
+                    <img src={item.thumbnail} alt="" className="photo h-full w-full object-cover" />
                   )}
                 </div>
-                <div className="flex flex-1 justify-between gap-4">
+                <div className="flex flex-1 flex-wrap items-center justify-between gap-3">
                   <div>
-                    <Link href={`/products/${item.product_slug}`} className="font-semibold hover:text-cobalt">{item.product_name}</Link>
+                    <Link href={`/products/${item.product_slug}`} className="font-semibold hover:text-accent">{item.product_name}</Link>
                     <p className="text-sm text-ink-soft">
                       {[variantLabel(item), `${item.quantity} × ${money(item.unit_price)}`].filter(Boolean).join(", ")}
                     </p>
                   </div>
-                  <span className="font-semibold">{money(item.line_total)}</span>
+                  <LinePrice price={item.line_total} />
                 </div>
               </li>
             ))}
           </ul>
-          <dl className="ml-auto mt-4 max-w-xs space-y-1">
+          <dl className="ml-auto mt-6 max-w-xs space-y-2 border-t border-line pt-5">
             <div className="flex justify-between"><dt>Items</dt><dd>{money(order.subtotal)}</dd></div>
             <div className="flex justify-between">
-              <dt>Delivery</dt><dd>{Number(order.shipping_fee) === 0 ? "Free" : money(order.shipping_fee)}</dd>
+              <dt>Delivery</dt>
+              <dd className={Number(order.shipping_fee) === 0 ? "font-semibold text-accent" : ""}>
+                {Number(order.shipping_fee) === 0 ? "Free" : money(order.shipping_fee)}
+              </dd>
             </div>
-            <div className="flex justify-between border-t border-line pt-2 text-lg font-bold"><dt>Total</dt><dd>{money(order.total)}</dd></div>
+            <div className="flex justify-between pt-2 font-display text-2xl font-extrabold"><dt>Total</dt><dd>{money(order.total)}</dd></div>
           </dl>
         </section>
 
         <aside className="space-y-8">
-          <section aria-labelledby="address-heading">
-            <h2 id="address-heading" className="mb-2 text-xl font-bold">Delivering to</h2>
+          <section aria-labelledby="address-heading" className="raised p-6">
+            <h2 id="address-heading" className="mb-3 text-xl font-bold">Delivering to</h2>
             <address className="not-italic leading-relaxed text-ink-soft">
               {address.full_name}<br />
               {address.line1}<br />
@@ -127,13 +134,18 @@ function OrderDetail() {
             </address>
           </section>
 
-          <section aria-labelledby="history-heading">
-            <h2 id="history-heading" className="mb-2 text-xl font-bold">History</h2>
-            <ol className="space-y-3 border-l-2 border-line pl-4 text-sm">
+          <section aria-labelledby="history-heading" className="raised p-6">
+            <h2 id="history-heading" className="mb-4 text-xl font-bold">History</h2>
+            <ol className="space-y-4 text-sm">
               {order.history.map((entry, index) => (
-                <li key={index}>
-                  <span className="font-semibold">{orderStatus(entry.to_status)}</span>
-                  <span className="block text-ink-soft">{dateTime(entry.created_at)}{entry.note ? `: ${entry.note}` : ""}</span>
+                <li key={index} className="flex gap-3">
+                  <span aria-hidden="true" className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${
+                    entry.to_status === "pending_payment" || entry.to_status === "cancelled" ? "bg-power" : "bg-accent"
+                  }`} />
+                  <span>
+                    <span className="font-semibold">{orderStatus(entry.to_status)}</span>
+                    <span className="block text-ink-soft">{dateTime(entry.created_at)}{entry.note ? `: ${entry.note}` : ""}</span>
+                  </span>
                 </li>
               ))}
             </ol>
@@ -141,7 +153,7 @@ function OrderDetail() {
 
           {/* Refunds aren't automated yet, so the site only offers cancelling before payment. */}
           {order.can_cancel && order.status === "pending_payment" && (
-            <Button variant="danger" onClick={cancel} busy={cancelling}>
+            <Button variant="danger" onClick={cancel} busy={cancelling} className="w-full">
               {cancelling ? "Cancelling…" : "Cancel order"}
             </Button>
           )}

@@ -31,24 +31,28 @@ export default async function ProductPage({ params }) {
   return (
     <div>
       <nav aria-label="Breadcrumb" className="mb-6 text-sm text-ink-soft">
-        <Link href="/products" className="hover:text-cobalt">All products</Link>
+        <Link href="/products" className="hover:text-accent">All products</Link>
         <span aria-hidden="true"> / </span>
-        <Link href={`/products?category=${product.category.slug}`} className="hover:text-cobalt">{product.category.name}</Link>
+        <Link href={`/products?category=${product.category.slug}`} className="hover:text-accent">{product.category.name}</Link>
       </nav>
 
-      <div className="grid gap-10 md:grid-cols-2">
-        <div className="space-y-4">
-          <div className="aspect-square overflow-hidden rounded-sm bg-shelf">
-            {mainImage && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={mainImage.url} alt={mainImage.alt_text || product.name} className="h-full w-full object-cover mix-blend-multiply" />
-            )}
+      <div className="grid gap-12 md:grid-cols-2">
+        <div className="space-y-5 self-start">
+          <div className="raised p-4">
+            <div className="inset aspect-square overflow-hidden">
+              {mainImage && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={mainImage.url} alt={mainImage.alt_text || product.name} className="photo h-full w-full object-cover" />
+              )}
+            </div>
           </div>
           {moreImages.length > 0 && (
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-4 gap-4">
               {moreImages.map((image) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={image.id} src={image.url} alt={image.alt_text || ""} className="aspect-square rounded-sm bg-shelf object-cover" />
+                <div key={image.id} className="raised-sm overflow-hidden p-1.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={image.url} alt={image.alt_text || ""} className="photo aspect-square rounded-lg object-cover" />
+                </div>
               ))}
             </div>
           )}
@@ -56,11 +60,11 @@ export default async function ProductPage({ params }) {
 
         <div>
           {product.brand && <p className="text-ink-soft">{product.brand}</p>}
-          <h1 className="mt-1 text-4xl font-extrabold">{product.name}</h1>
+          <h1 className="mt-1 text-4xl font-extrabold sm:text-5xl">{product.name}</h1>
           <AddToBasket variants={product.variants} />
           {product.description && (
-            <div className="mt-10 border-t border-line pt-6">
-              <h2 className="text-lg font-bold">About this product</h2>
+            <div className="mt-10">
+              <h2 className="text-xl font-bold">About this product</h2>
               <p className="mt-2 max-w-prose leading-relaxed text-ink-soft">{product.description}</p>
             </div>
           )}

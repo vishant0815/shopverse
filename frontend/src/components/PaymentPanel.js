@@ -12,6 +12,15 @@ import { Button, Notice } from "./ui";
 const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = publishableKey ? loadStripe(publishableKey) : null;
 
+// Make Stripe's card form match the current theme.
+function stripeAppearance() {
+  const dark = document.documentElement.dataset.theme !== "light";
+  return {
+    theme: dark ? "night" : "stripe",
+    variables: { colorPrimary: dark ? "#35d888" : "#0b7444", colorDanger: dark ? "#ff2d4b" : "#8e1023", borderRadius: "12px" },
+  };
+}
+
 // After Stripe accepts the card, the order becomes "paid" only once Stripe's webhook
 // reaches the payments service. Check the order a few times until that happens.
 async function waitUntilPaid(number, attempts = 15) {
@@ -42,8 +51,8 @@ export default function PaymentPanel({ order, onPaid }) {
   }, [order.number, onPaid]);
 
   return (
-    <section aria-labelledby="pay-heading" className="border-2 border-ink bg-white p-6">
-      <h2 id="pay-heading" className="text-2xl font-bold">Pay {money(order.total)}</h2>
+    <section aria-labelledby="pay-heading" className="raised p-6 shadow-[9px_9px_18px_var(--shadow-dark),-9px_-9px_18px_var(--shadow-light),inset_0_0_0_2px_var(--power)]">
+      <h2 id="pay-heading" className="text-3xl font-extrabold">Pay <span className="metal-text">{money(order.total)}</span></h2>
       <div className="mt-4 space-y-4">
         <Notice>{error}</Notice>
         {!payment && !error && <p className="text-ink-soft">Getting your payment ready…</p>}
@@ -53,7 +62,7 @@ export default function PaymentPanel({ order, onPaid }) {
         )}
         {payment && provider === "stripe" && (
           stripePromise ? (
-            <Elements stripe={stripePromise} options={{ clientSecret: payment.client_secret }}>
+            <Elements stripe={stripePromise} options={{ clientSecret: payment.client_secret, appearance: stripeAppearance() }}>
               <StripePayment order={order} onDone={onPaid} onError={setError} />
             </Elements>
           ) : (

@@ -7,11 +7,27 @@ import { useMemo, useState } from "react";
 import { api } from "@/lib/api";
 import { useSession } from "@/lib/session";
 
-import PriceTag from "./PriceTag";
+import { PricePanel } from "./Price";
 import { Button, Notice } from "./ui";
+
+const MAX_QUANTITY = 10;
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function OptionButton({ selected, disabled, onClick, children }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-pressed={selected}
+      onClick={onClick}
+      className={`raised-sm min-w-14 px-4 py-2.5 font-medium ${selected ? "pressed" : "hover:text-accent"} disabled:cursor-not-allowed disabled:text-ink-soft disabled:line-through disabled:opacity-45`}
+    >
+      {children}
+    </button>
+  );
 }
 
 export default function AddToBasket({ variants }) {
@@ -53,39 +69,34 @@ export default function AddToBasket({ variants }) {
     }
   }
 
+  const changed = () => setState((s) => ({ ...s, added: false }));
+
   return (
-    <div className="mt-6 space-y-6">
-      <div className="-ml-1" key={selected?.id}>
-        {selected ? (
-          <div className="flex items-center gap-3">
-            <PriceTag price={selected.price} was={selected.compare_at_price} size="lg" swing />
-            {selected.discount_percent > 0 && <span className="sale-sticker">{selected.discount_percent}% off</span>}
-          </div>
-        ) : (
-          <p className="text-ink-soft">That combination isn&apos;t available. Pick another size.</p>
-        )}
-      </div>
+    <div className="mt-6 space-y-7">
+      {selected ? (
+        <PricePanel price={selected.price} was={selected.compare_at_price} discount={selected.discount_percent} />
+      ) : (
+        <p className="text-ink-soft">That combination isn&apos;t available. Pick another size.</p>
+      )}
 
       {colours.length > 0 && (
         <fieldset>
-          <legend className="mb-2 font-medium">Colour: <span className="font-normal">{colour}</span></legend>
-          <div className="flex flex-wrap gap-2">
+          <legend className="mb-3 font-semibold">Colour: <span className="font-normal text-ink-soft">{colour}</span></legend>
+          <div className="flex flex-wrap gap-3.5">
             {colours.map((option) => (
-              <button
+              <OptionButton
                 key={option}
-                type="button"
-                aria-pressed={colour === option}
+                selected={colour === option}
                 onClick={() => {
                   setColour(option);
                   if (!variants.some((v) => v.colour === option && v.size === size)) {
                     setSize(variants.find((v) => v.colour === option)?.size || "");
                   }
-                  setState((s) => ({ ...s, added: false }));
+                  changed();
                 }}
-                className={`rounded-sm border px-4 py-2 ${colour === option ? "border-ink bg-ink text-white" : "border-line bg-white hover:border-ink"}`}
               >
                 {option}
-              </button>
+              </OptionButton>
             ))}
           </div>
         </fieldset>
@@ -93,46 +104,34 @@ export default function AddToBasket({ variants }) {
 
       {sizes.length > 0 && (
         <fieldset>
-          <legend className="mb-2 font-medium">Size: <span className="font-normal">{size}</span></legend>
-          <div className="flex flex-wrap gap-2">
-            {sizes.map((option) => {
-              const available = sizeAvailable(option);
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  disabled={!available}
-                  aria-pressed={size === option}
-                  onClick={() => {
-                    setSize(option);
-                    setState((s) => ({ ...s, added: false }));
-                  }}
-                  className={`min-w-12 rounded-sm border px-3 py-2 ${
-                    size === option ? "border-ink bg-ink text-white" : "border-line bg-white hover:border-ink"
-                  } disabled:cursor-not-allowed disabled:text-ink-soft/50 disabled:line-through`}
-                >
-                  {option}
-                </button>
-              );
-            })}
+          <legend className="mb-3 font-semibold">Size: <span className="font-normal text-ink-soft">{size}</span></legend>
+          <div className="flex flex-wrap gap-3.5">
+            {sizes.map((option) => (
+              <OptionButton
+                key={option}
+                selected={size === option}
+                disabled={!sizeAvailable(option)}
+                onClick={() => {
+                  setSize(option);
+                  changed();
+                }}
+              >
+                {option}
+              </OptionButton>
+            ))}
           </div>
         </fieldset>
       )}
 
-      <div className="flex flex-wrap items-end gap-3">
-        <label>
-          <span className="mb-2 block font-medium">Quantity</span>
-          <select
-            value={quantity}
-            onChange={(e) => setQuantity(Number(e.target.value))}
-            className="rounded-sm border border-line bg-white px-3 py-2.5"
-          >
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
-        </label>
-        <Button onClick={add} busy={state.busy} disabled={!selected} className="flex-1 py-3 text-lg">
+      <div className="flex flex-wrap items-stretch gap-4">
+        <div className="inset flex items-center" role="group" aria-label="Quantity">
+          <button type="button" className="h-full px-4 text-xl text-ink-soft hover:text-accent disabled:opacity-40"
+            onClick={() => setQuantity((q) => Math.max(1, q - 1))} disabled={quantity <= 1} aria-label="One fewer">−</button>
+          <span className="min-w-6 text-center font-bold" aria-live="polite">{quantity}</span>
+          <button type="button" className="h-full px-4 text-xl text-ink-soft hover:text-accent disabled:opacity-40"
+            onClick={() => setQuantity((q) => Math.min(MAX_QUANTITY, q + 1))} disabled={quantity >= MAX_QUANTITY} aria-label="One more">+</button>
+        </div>
+        <Button onClick={add} busy={state.busy} disabled={!selected} className="flex-1 py-3.5 text-lg">
           {state.busy ? "Adding…" : "Add to basket"}
         </Button>
       </div>

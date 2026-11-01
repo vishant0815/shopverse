@@ -66,11 +66,33 @@ class ProductListSerializer(serializers.ModelSerializer):
 
     category = CategorySummarySerializer(read_only=True)
     min_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    compare_at_price = serializers.SerializerMethodField()
+    discount_percent = serializers.SerializerMethodField()
     thumbnail = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
-        fields = ["id", "name", "slug", "brand", "category", "min_price", "thumbnail", "seller_id", "status"]
+        fields = [
+            "id", "name", "slug", "brand", "category", "min_price", "compare_at_price",
+            "discount_percent", "thumbnail", "seller_id", "status",
+        ]
+
+    def _cheapest(self, obj):
+        """The active variant whose price is shown on the card (uses prefetched variants)."""
+        active = [v for v in obj.variants.all() if v.is_active]
+        return min(active, key=lambda v: v.price) if active else None
+
+    def get_compare_at_price(self, obj):
+        variant = self._cheapest(obj)
+        if variant and variant.compare_at_price and variant.compare_at_price > variant.price:
+            return str(variant.compare_at_price)
+        return None
+
+    def get_discount_percent(self, obj):
+        variant = self._cheapest(obj)
+        if variant and variant.compare_at_price and variant.compare_at_price > variant.price:
+            return round((1 - variant.price / variant.compare_at_price) * 100)
+        return 0
 
     def get_thumbnail(self, obj):
         images = list(obj.images.all())  # uses prefetched images, no extra query
