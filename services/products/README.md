@@ -13,7 +13,7 @@ Category (tree: Electronics > Mobiles)
         └── ProductImage (url, alt_text, position)
 ```
 
-- **Prices live on variants,** because "Blue, M" and "Black, L" can cost different amounts. Product listings show the lowest active variant price.
+- **Prices live on variants,** because "Blue, M" and "Black, L" can cost different amounts. Product listings show the lowest active variant price, plus that variant's `compare_at_price` and `discount_percent` when it's on sale.
 - **Stock is not stored here.** It will belong to the inventory service, keyed by SKU.
 - **`seller_id`** is the seller's id from the users service. There is no foreign key across services (database per service).
 - Images are stored as URLs, ready for object storage such as S3.
@@ -44,6 +44,7 @@ Base path: `/api/v1/`
 | `brand` | `nova,aero` | One or more, case-insensitive |
 | `min_price`, `max_price` | `50`, `500` | Based on the lowest variant price |
 | `colour`, `size` | `blue`, `M` | Matches any active variant |
+| `on_sale` | `true` | Only products with a discounted active variant (`false` for full-price only) |
 | `search` | `wireless` | Name, brand and description |
 | `ordering` | `min_price`, `-min_price`, `-created_at`, `name` | |
 | `page`, `page_size` | `2`, `24` | Max 100 per page |
@@ -125,7 +126,7 @@ docker compose exec products python manage.py seed_catalog --reset  # recreate d
 docker compose run --rm products pytest
 ```
 
-56 tests cover browsing, the variant lookup, every filter, sorting, pagination, N+1 protection, category caching, role checks, ownership, validation rules and forged tokens.
+60 tests cover browsing, sale prices, the variant lookup, every filter, sorting, pagination, N+1 protection, category caching, role checks, ownership, validation rules and forged tokens.
 
 ## Configuration
 

@@ -15,7 +15,7 @@ export default function SortSelect({ value }) {
   const searchParams = useSearchParams();
 
   return (
-    <label className="flex items-center gap-2 text-sm">
+    <label className="flex items-center gap-3 text-sm">
       <span className="font-medium">Sort by</span>
       <select
         value={value}
@@ -25,7 +25,7 @@ export default function SortSelect({ value }) {
           params.delete("page");
           router.push(`${pathname}?${params}`);
         }}
-        className="rounded-sm border border-line bg-white px-2 py-1.5"
+        className="field w-auto py-2 pr-8"
       >
         {OPTIONS.map(([key, label]) => (
           <option key={key} value={key}>{label}</option>

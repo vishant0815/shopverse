@@ -268,7 +268,7 @@ Each service has its own test suite, run against PostgreSQL inside Docker.
 
 ```bash
 docker compose run --rm users pytest       # 43 tests
-docker compose run --rm products pytest    # 56 tests
+docker compose run --rm products pytest    # 60 tests
 docker compose run --rm orders pytest      # 68 tests
 docker compose run --rm payments pytest    # 46 tests
 ```

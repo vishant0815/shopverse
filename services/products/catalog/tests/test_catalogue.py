@@ -139,3 +139,40 @@ class TestFilters:
         assert response.data["count"] == 5
         assert len(response.data["results"]) == 2
         assert response.data["next"] is not None
+
+
+class TestSalePrices:
+    def make_sale(self, make_product, name, price, was):
+        product = make_product(name=name, variants=[("Black", "S", price)])
+        product.variants.update(compare_at_price=was)
+        return product
+
+    def test_card_shows_old_price_and_discount_of_cheapest_variant(self, anon, make_product):
+        product = make_product(name="Shirt", variants=[("Black", "S", "30.00"), ("Blue", "S", "20.00")])
+        product.variants.filter(colour="Blue").update(compare_at_price="40.00")
+
+        item = anon.get(PRODUCTS).data["results"][0]
+
+        assert item["min_price"] == "20.00"
+        assert item["compare_at_price"] == "40.00"
+        assert item["discount_percent"] == 50
+
+    def test_full_price_product_has_no_old_price(self, anon, make_product):
+        make_product()
+        item = anon.get(PRODUCTS).data["results"][0]
+
+        assert item["compare_at_price"] is None
+        assert item["discount_percent"] == 0
+
+    def test_on_sale_filter(self, anon, make_product):
+        self.make_sale(make_product, "Deal", "10.00", "20.00")
+        make_product(name="Full price")
+
+        assert names(anon.get(PRODUCTS, {"on_sale": "true"})) == ["Deal"]
+        assert names(anon.get(PRODUCTS, {"on_sale": "false"})) == ["Full price"]
+
+    def test_inactive_discounted_variant_does_not_count(self, anon, make_product):
+        product = self.make_sale(make_product, "Old deal", "10.00", "20.00")
+        product.variants.update(is_active=False)
+
+        assert anon.get(PRODUCTS, {"on_sale": "true"}).data["count"] == 0

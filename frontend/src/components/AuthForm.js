@@ -59,15 +59,15 @@ export default function AuthForm({ mode }) {
 
   return (
     <div className="mx-auto max-w-md py-8">
-      <h1 className="text-4xl font-extrabold">{isRegister ? "Create an account" : "Sign in"}</h1>
+      <h1 className="text-4xl font-extrabold sm:text-5xl">{isRegister ? "Create an account" : "Sign in"}</h1>
       <p className="mt-2 text-ink-soft">
         {isRegister ? "Already have one? " : "New to Shopverse? "}
-        <Link href={`/${isRegister ? "login" : "register"}?next=${encodeURIComponent(next)}`} className="font-medium text-cobalt hover:underline">
+        <Link href={`/${isRegister ? "login" : "register"}?next=${encodeURIComponent(next)}`} className="font-medium text-accent hover:underline">
           {isRegister ? "Sign in" : "Create an account"}
         </Link>
       </p>
 
-      <form onSubmit={submit} className="mt-8 space-y-4" noValidate>
+      <form onSubmit={submit} className="raised mt-8 space-y-5 p-7" noValidate>
         <Notice>{error}</Notice>
         {isRegister && (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -87,7 +87,7 @@ export default function AuthForm({ mode }) {
         />
         {isRegister && (
           <label className="flex items-start gap-3 text-sm">
-            <input type="checkbox" name="seller" className="mt-0.5 h-4 w-4 accent-cobalt" />
+            <input type="checkbox" name="seller" className="mt-0.5 h-4 w-4 accent-[var(--accent)]" />
             <span>I want to sell on Shopverse</span>
           </label>
         )}

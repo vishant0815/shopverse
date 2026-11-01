@@ -1,5 +1,5 @@
 import django_filters
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, F, OuterRef, Q
 
 from .models import Category, Product, ProductVariant
 
@@ -12,10 +12,17 @@ class ProductFilter(django_filters.FilterSet):
     colour = django_filters.CharFilter(method="filter_variant_option")
     size = django_filters.CharFilter(method="filter_variant_option")
     seller = django_filters.UUIDFilter(field_name="seller_id")
+    on_sale = django_filters.BooleanFilter(method="filter_on_sale", help_text="Only products with a discounted variant")
 
     class Meta:
         model = Product
-        fields = ["category", "brand", "min_price", "max_price", "colour", "size", "seller"]
+        fields = ["category", "brand", "min_price", "max_price", "colour", "size", "seller", "on_sale"]
+
+    def filter_on_sale(self, queryset, name, value):
+        discounted = ProductVariant.objects.filter(
+            product=OuterRef("pk"), is_active=True, compare_at_price__gt=F("price")
+        )
+        return queryset.filter(Exists(discounted)) if value else queryset.exclude(Exists(discounted))
 
     def filter_category(self, queryset, name, value):
         category = Category.objects.filter(slug=value).first()

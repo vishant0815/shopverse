@@ -2,26 +2,68 @@
 @import "@fontsource-variable/bricolage-grotesque";
 @import "@fontsource-variable/instrument-sans";
 
-/* Design tokens. The one loud element is the yellow price sticker; everything else is quiet. */
-@theme {
-  --color-paper: #f7f8fa;      /* page background: cool, not cream */
-  --color-shelf: #eceff4;      /* behind product photos */
-  --color-line: #dde1ea;
-  --color-ink: #1b1f3b;        /* text: deep indigo */
-  --color-ink-soft: #565b78;
-  --color-cobalt: #2f5bea;     /* actions */
-  --color-cobalt-deep: #1f43bd;
-  --color-sticker: #ffd23f;    /* price tags */
-  --color-sale: #e23d28;       /* discounts and errors */
-  --color-ok: #1d8a5b;
+/*
+ * Themes
+ * ------
+ * Neumorphism: every surface is the same colour as the page, and depth comes only from
+ * two shadows, one darker (bottom-right) and one lighter (top-left).
+ * Dark theme: soft black, metallic green, bright red accents.
+ * Light theme: pale grey-green, deeper metallic green, the same accents in dark red.
+ * <html data-theme="..."> is set before the page paints (see layout.js), so there's no flash.
+ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1a1d1f;
+  --shadow-dark: #0b0c0d;
+  --shadow-light: #2a2f33;
+  --ink: #e9eeeb;
+  --ink-soft: #9aa49f;
+  --line: #2a2f33;
+  --accent: #35d888;
+  --metal: linear-gradient(145deg, #7df5b8 0%, #2fcf7f 28%, #128a52 62%, #4fe39a 100%);
+  --metal-ink: #03140a;
+  --power: #ff2d4b;
+  --power-glow: 0 0 16px rgb(255 45 75 / 0.45);
+  --glass: rgb(14 16 18 / 0.62);
+  --glass-edge: rgb(255 255 255 / 0.12);
+  --photo-filter: brightness(0.85) contrast(1.04);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #e3e8e5;
+  --shadow-dark: #bfc6c2;
+  --shadow-light: #ffffff;
+  --ink: #0f1513;
+  --ink-soft: #4b5752;
+  --line: #ccd3cf;
+  --accent: #0b7444;
+  --metal: linear-gradient(145deg, #4fd894 0%, #179a5c 30%, #0a5a35 65%, #2fbf78 100%);
+  --metal-ink: #f2fff7;
+  --power: #8e1023;
+  --power-glow: none;
+  --glass: rgb(245 249 247 / 0.74);
+  --glass-edge: rgb(255 255 255 / 0.7);
+  --photo-filter: none;
+}
+
+/* Expose the theme colours to Tailwind as bg-bg, text-ink, text-accent, text-power, border-line... */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-power: var(--power);
 
   --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, sans-serif;
 }
 
 html {
-  background: var(--color-paper);
-  color: var(--color-ink);
+  background: var(--bg);
+  color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -29,64 +71,214 @@ html {
 h1, h2, h3 {
   font-family: var(--font-display);
   letter-spacing: -0.01em;
-  line-height: 1.1;
+  line-height: 1.08;
 }
 
 :focus-visible {
-  outline: 3px solid var(--color-cobalt);
-  outline-offset: 2px;
-  border-radius: 4px;
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
 }
 
-/* The price sticker: a tag with a punched hole, like the ones on market stalls. */
-.price-tag {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4em;
-  padding: 0.3em 0.75em 0.3em 1.35em;
-  background: var(--color-sticker);
-  color: var(--color-ink);
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  clip-path: polygon(0.7em 0, 100% 0, 100% 100%, 0.7em 100%, 0 50%);
-}
-.price-tag::before {
-  content: "";
-  position: absolute;
-  left: 0.6em;
-  top: 50%;
-  width: 0.32em;
-  height: 0.32em;
-  margin-top: -0.16em;
-  border-radius: 50%;
-  background: var(--color-paper);
-}
-.price-tag .was {
-  font-family: var(--font-sans);
-  font-weight: 500;
-  font-size: 0.75em;
-  text-decoration: line-through;
-  color: var(--color-ink-soft);
+::selection {
+  background: var(--accent);
+  color: var(--metal-ink);
 }
 
-.sale-sticker {
-  display: inline-block;
-  padding: 0.2em 0.55em;
-  background: var(--color-sale);
-  color: white;
-  font-weight: 700;
-  font-size: 0.8rem;
-  border-radius: 999px;
-  transform: rotate(-6deg);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .tag-swing { animation: tag-swing 0.6s ease-out both; transform-origin: 0 50%; }
-  @keyframes tag-swing {
-    0% { transform: rotate(-8deg); }
-    60% { transform: rotate(3deg); }
-    100% { transform: rotate(0); }
+/* ---------- Surfaces ---------- */
+@layer components {
+  .raised {
+    background: var(--bg);
+    border-radius: 20px;
+    box-shadow: 9px 9px 18px var(--shadow-dark), -9px -9px 18px var(--shadow-light);
   }
+  .raised-sm {
+    background: var(--bg);
+    border-radius: 14px;
+    box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+  }
+  .inset {
+    background: var(--bg);
+    border-radius: 14px;
+    box-shadow: inset 5px 5px 10px var(--shadow-dark), inset -5px -5px 10px var(--shadow-light);
+  }
+  /* A selected option: pushed into the surface, with a green edge so it's clear without colour alone. */
+  .pressed {
+    box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light), inset 0 0 0 2px var(--accent);
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* Text fields are pressed-in wells. */
+  .field {
+    width: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    border: 0;
+    border-radius: 12px;
+    padding: 0.7rem 0.9rem;
+    box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+  }
+  .field::placeholder { color: var(--ink-soft); opacity: 0.8; }
+  .field[aria-invalid="true"] { box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light), inset 0 0 0 2px var(--power); }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 14px;
+    padding: 0.75rem 1.4rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .btn:disabled { cursor: not-allowed; opacity: 0.55; }
+  .btn-metal {
+    color: var(--metal-ink);
+    background: var(--metal);
+    box-shadow: 6px 6px 14px var(--shadow-dark), -6px -6px 14px var(--shadow-light), inset 0 1px 0 rgb(255 255 255 / 0.45);
+  }
+  .btn-soft {
+    color: var(--ink);
+    background: var(--bg);
+    box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+  }
+  .btn-power {
+    color: var(--power);
+    background: var(--bg);
+    box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light), inset 0 0 0 2px var(--power);
+  }
+
+  .metal-text {
+    background: var(--metal);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ---------- Prices ---------- */
+  .glass-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 12px;
+    background: var(--glass);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-edge);
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+  .glass-chip .now { color: var(--accent); }
+  .was {
+    color: var(--power);
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .off-pill {
+    display: inline-block;
+    white-space: nowrap;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    background: var(--power);
+    color: #fff;
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 0.8rem;
+    box-shadow: var(--power-glow);
+  }
+  .count-badge {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: var(--power);
+    color: #fff;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.8rem;
+    box-shadow: var(--power-glow);
+  }
+
+  /* An empty basket stays quiet; red only appears once there's something in it. */
+  .count-badge-empty {
+    background: var(--bg);
+    color: var(--ink-soft);
+    box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+  }
+
+  .photo { filter: var(--photo-filter); }
+
+  /* ---------- Theme switch ---------- */
+  .theme-switch {
+    position: relative;
+    width: 4.1rem;
+    height: 2.1rem;
+    flex: none;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+    background: var(--bg);
+  }
+  .theme-switch .icon { position: absolute; top: 50%; width: 1rem; height: 1rem; margin-top: -0.5rem; color: var(--ink-soft); }
+  .theme-switch .knob {
+    position: absolute;
+    top: 0.25rem;
+    left: 0.25rem;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    background: var(--metal);
+    box-shadow: 2px 2px 5px var(--shadow-dark);
+  }
+  [data-theme="dark"] .theme-switch .knob { transform: translateX(2rem); }
 }
+
+/* ---------- Motion ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  .raised, .raised-sm, .btn, .lift { transition: box-shadow 0.25s ease, transform 0.25s ease; }
+
+  /* Cards lift towards you on hover; their photo zooms in a touch. */
+  .lift:hover { transform: translateY(-4px); box-shadow: 14px 14px 26px var(--shadow-dark), -10px -10px 22px var(--shadow-light); }
+  .lift .photo { transition: transform 0.5s ease; }
+  .lift:hover .photo { transform: scale(1.05); }
+
+  /* Buttons press into the surface while clicked. */
+  .btn:not(:disabled):active, .raised-sm:active {
+    transform: translateY(1px);
+    box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+  }
+
+  /* The headline rises in once, line by line. */
+  .rise { animation: rise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  .rise-2 { animation-delay: 0.15s; }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* The red basket count pulses whenever it changes. */
+  .bump { animation: bump 0.5s ease; }
+  @keyframes bump { 40% { transform: scale(1.35); } }
+
+  .theme-switch .knob { transition: transform 0.45s cubic-bezier(0.7, 0, 0.3, 1); }
+}
+
+/*
+ * Theme change animation (see ThemeSwitch.js). The browser snapshots the page before and after,
+ * and we animate a circle centred on the switch: the dark snapshot grows out of it, or shrinks back into it.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+html[data-switching="to-light"]::view-transition-old(root) { z-index: 2; }
+html[data-switching="to-light"]::view-transition-new(root) { z-index: 1; }

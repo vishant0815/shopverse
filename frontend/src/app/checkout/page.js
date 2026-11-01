@@ -97,80 +97,82 @@ function Checkout() {
   if (!cart) return <p className="py-24 text-center text-ink-soft">{error || "Loading checkout…"}</p>;
   if (!cart.items.length) {
     return (
-      <div className="py-20 text-center">
+      <div className="raised mx-auto max-w-md px-8 py-16 text-center">
         <h1 className="text-3xl font-bold">Nothing to check out</h1>
-        <Link href="/products" className="mt-4 inline-block text-cobalt hover:underline">Browse products</Link>
+        <Link href="/products" className="btn btn-metal mt-6">Browse products</Link>
       </div>
     );
   }
 
   return (
-    <form onSubmit={placeOrder} className="grid gap-10 lg:grid-cols-[1fr_340px]">
+    <form onSubmit={placeOrder} className="grid gap-10 lg:grid-cols-[1fr_360px]">
       <section aria-labelledby="delivery-heading">
-        <h1 className="mb-6 text-4xl font-extrabold">Checkout</h1>
-        <h2 id="delivery-heading" className="mb-4 text-2xl font-bold">Delivery address</h2>
-        <div className="space-y-3">
-          {addresses.map((address) => (
-            <label
-              key={address.id}
-              className={`flex cursor-pointer gap-3 border p-4 ${choice === address.id ? "border-ink bg-white" : "border-line"}`}
-            >
-              <input
-                type="radio"
-                name="address"
-                checked={choice === address.id}
-                onChange={() => setChoice(address.id)}
-                className="mt-1 accent-cobalt"
-              />
-              <span>
-                <span className="font-semibold">{address.full_name}</span>
-                <span className="block text-ink-soft">
-                  {[address.line1, address.line2, address.city, address.postcode].filter(Boolean).join(", ")}
+        <h1 className="mb-8 text-4xl font-extrabold sm:text-5xl">Checkout</h1>
+        <div className="raised p-6">
+          <h2 id="delivery-heading" className="mb-5 text-2xl font-bold">Delivery address</h2>
+          <div className="space-y-4">
+            {addresses.map((address) => (
+              <label key={address.id} className={`flex cursor-pointer gap-3 p-4 ${choice === address.id ? "inset pressed" : "raised-sm"}`}>
+                <input
+                  type="radio"
+                  name="address"
+                  checked={choice === address.id}
+                  onChange={() => setChoice(address.id)}
+                  className="mt-1 accent-[var(--accent)]"
+                />
+                <span>
+                  <span className="font-semibold">{address.full_name}</span>
+                  <span className="block font-normal text-ink-soft">
+                    {[address.line1, address.line2, address.city, address.postcode].filter(Boolean).join(", ")}
+                  </span>
                 </span>
-              </span>
-            </label>
-          ))}
-          <label className={`flex cursor-pointer gap-3 border p-4 ${choice === "new" ? "border-ink bg-white" : "border-line"}`}>
-            <input type="radio" name="address" checked={choice === "new"} onChange={() => setChoice("new")} className="mt-1 accent-cobalt" />
-            <span className="font-semibold">{addresses.length ? "Use a new address" : "New address"}</span>
-          </label>
-        </div>
-
-        {choice === "new" && (
-          <div className="mt-6 space-y-4">
-            <AddressForm value={draft} onChange={setDraft} errors={fieldErrors} />
-            <label className="flex items-center gap-3 text-sm">
-              <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} className="h-4 w-4 accent-cobalt" />
-              Save this address for next time
+              </label>
+            ))}
+            <label className={`flex cursor-pointer gap-3 p-4 ${choice === "new" ? "inset pressed" : "raised-sm"}`}>
+              <input type="radio" name="address" checked={choice === "new"} onChange={() => setChoice("new")} className="mt-1 accent-[var(--accent)]" />
+              <span className="font-semibold">{addresses.length ? "Use a new address" : "New address"}</span>
             </label>
           </div>
-        )}
+
+          {choice === "new" && (
+            <div className="mt-7 space-y-5">
+              <AddressForm value={draft} onChange={setDraft} errors={fieldErrors} />
+              <label className="flex items-center gap-3 text-sm">
+                <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
+                Save this address for next time
+              </label>
+            </div>
+          )}
+        </div>
       </section>
 
-      <aside aria-label="Order summary" className="h-fit border border-ink bg-white p-6">
-        <h2 className="text-xl font-bold">Your order</h2>
-        <ul className="mt-4 space-y-3 text-sm">
+      <aside aria-label="Order summary" className="raised h-fit p-6 lg:mt-[5.75rem]">
+        <h2 className="text-2xl font-bold">Your order</h2>
+        <ul className="mt-5 space-y-3 text-sm">
           {cart.items.map((item) => (
             <li key={item.variant_id} className="flex justify-between gap-3">
               <span>
                 {item.quantity} × {item.product_name}
                 <span className="block text-ink-soft">{variantLabel(item)}</span>
               </span>
-              <span className="shrink-0">{money(item.line_total)}</span>
+              <span className="shrink-0 font-semibold">{money(item.line_total)}</span>
             </li>
           ))}
         </ul>
-        <dl className="mt-4 space-y-2 border-t border-line pt-4">
+        <dl className="mt-5 space-y-3 border-t border-line pt-5">
           <div className="flex justify-between"><dt>Items</dt><dd>{money(cart.subtotal)}</dd></div>
           <div className="flex justify-between">
-            <dt>Delivery</dt><dd>{Number(cart.shipping_fee) === 0 ? "Free" : money(cart.shipping_fee)}</dd>
+            <dt>Delivery</dt>
+            <dd className={Number(cart.shipping_fee) === 0 ? "font-semibold text-accent" : ""}>
+              {Number(cart.shipping_fee) === 0 ? "Free" : money(cart.shipping_fee)}
+            </dd>
           </div>
-          <div className="flex justify-between border-t border-line pt-3 text-lg font-bold">
+          <div className="flex justify-between border-t border-line pt-4 font-display text-2xl font-extrabold">
             <dt>Total</dt><dd>{money(cart.total)}</dd>
           </div>
         </dl>
-        <div className="mt-4"><Notice>{error}</Notice></div>
-        <Button type="submit" busy={busy} disabled={!cart.prices_available} className="mt-6 w-full py-3 text-lg">
+        <div className="mt-5 empty:hidden"><Notice>{error}</Notice></div>
+        <Button type="submit" busy={busy} disabled={!cart.prices_available} className="mt-6 w-full py-3.5 text-lg">
           {busy ? "Placing order…" : "Place order"}
         </Button>
         <p className="mt-3 text-sm text-ink-soft">You&apos;ll pay on the next page.</p>

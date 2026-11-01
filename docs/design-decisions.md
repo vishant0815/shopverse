@@ -123,3 +123,13 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 **Why:** One origin means no CORS rules to get wrong, and the refresh cookie (scoped to `/api/v1/auth/`) works without changes because paths are forwarded as they are. Server rendering makes product pages fast and readable by search engines, while basket and order pages depend on the signed-in user and gain nothing from it.
 
 **Trade-off:** The storefront is now also a simple gateway, so it doesn't do what a real one would: rate limiting across all services, request logging, or TLS termination. A dedicated API gateway (Nginx or Kong) is on the roadmap and would take over this role, leaving the storefront to only render pages.
+
+---
+
+## 014: Themes with CSS variables and a pre-paint script
+
+**Decision:** Every colour is a CSS variable, defined once for the dark theme and once for the light theme, and switched by a `data-theme` attribute on `<html>`. A small inline script in `<head>` sets that attribute before the page is drawn, from the saved choice or the device setting. React never sets it.
+
+**Why:** Components only use names like `text-accent` and `text-power`, so a whole theme changes in one place, and the light theme's "dark red" is the same variable as the dark theme's bright red. Setting the theme before the first paint avoids the common flash of the wrong theme on server-rendered pages. Leaving the attribute out of React's output matters: on pages React renders entirely in the browser (such as the 404 page), React would otherwise overwrite the saved theme. An early version had exactly that bug, found by the browser tests.
+
+**Trade-off:** The saved choice lives in the browser (`localStorage`), so it doesn't follow a user to another device. Saving it on the user's profile is a small follow-up if needed.

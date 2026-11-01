@@ -53,7 +53,29 @@ The order page shows a payment panel while an order is awaiting payment. It asks
 
 ## Design
 
-One loud element, everything else quiet: prices are yellow market-stall price tags with a punched hole, with a red sticker for discounts. The rest is a cool white page, deep indigo text, cobalt buttons and flat product tiles. Headings use Bricolage Grotesque and body text Instrument Sans, both self-hosted so nothing loads from Google at runtime. Keyboard focus is always visible, there's a skip link, and the one animation (the price tag swinging into place) respects reduced-motion settings.
+**Neumorphism in black and metallic green, with a dark and a light theme.**
+
+- **Surfaces:** every card, button and field is the same colour as the page; depth comes only from a dark and a light shadow. Cards and buttons look raised, fields and selected options look pressed in.
+- **Metallic green** (a gradient) for buttons, links, the logo and prices.
+- **Red** marks what needs attention or is a deal: discounts, crossed-out old prices, the basket count, "awaiting payment", errors and remove or cancel actions. It's bright red in the dark theme and dark red in the light theme.
+- **Prices** sit in a frosted-glass chip on product photos, and in a pressed-in panel on the product page, basket and orders.
+- **Type:** Bricolage Grotesque for headings and Instrument Sans for body text, both self-hosted.
+
+### Themes
+
+- The first visit follows the device's light or dark setting; the switch in the header changes it, and the choice is remembered in the browser.
+- A tiny script in the page `<head>` sets the theme before anything is drawn, so there's never a flash of the wrong colours.
+- All colours are CSS variables (`globals.css`), exposed to Tailwind as `bg-bg`, `text-ink`, `text-accent`, `text-power` and so on, so components never hard-code a colour.
+
+### Motion
+
+- **Theme switch:** going dark, darkness pours out of the switch in a growing circle; going light, it's pulled back in. Built with the View Transitions API (`ThemeSwitch.js`); browsers without it switch instantly.
+- Cards lift on hover, buttons press in when clicked, the headline rises in on load, and the basket count pulses when it changes.
+- Everything is switched off for people who've asked their device to reduce motion.
+
+### Accessibility
+
+Visible keyboard focus everywhere, a skip link, labelled controls (including the quantity steppers and the theme switch), selected options marked with an outline and not only colour, and no horizontal scrolling on phones.
 
 ## Running without Docker
 
@@ -69,4 +91,4 @@ Service addresses default to `localhost:8001`–`8004`; see `.env.local.example`
 
 ## Tested
 
-The full journey was run in a real Chromium browser against all four services: browsing, filtering, sorting, searching, variant picking, registering (including a weak password error shown next to the field), adding to the basket, changing quantities, checking out with a new address, a declined card, a successful payment, staying signed in after reload, the saved address being pre-selected next time, signing out, open-redirect protection, the 404 page and the mobile layout. Automating this walkthrough in CI is on the roadmap.
+The full journey was run in a real Chromium browser against all four services, in both the dark and the light theme: browsing, filtering, sorting, searching, variant picking, registering (including a weak password error shown next to the field), adding to the basket, changing quantities, checking out with a new address, a declined card, a successful payment, staying signed in after reload, the saved address being pre-selected next time, signing out, open-redirect protection, the 404 page and the mobile layout. Automating this walkthrough in CI is on the roadmap.
