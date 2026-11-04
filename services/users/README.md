@@ -87,13 +87,22 @@ docker compose exec users python manage.py createsuperuser
 
 The API is on http://localhost:8001.
 
+## Demo accounts
+
+`python manage.py seed_demo_users` creates (or resets) two accounts for trying the panels:
+
+- `seller@shopverse.dev`: role `seller`. Its id matches the seller of the demo products, so the dashboard has real sales.
+- `admin@shopverse.dev`: role `admin`.
+
+The password comes from `DEMO_USER_PASSWORD`. The command refuses to run with an empty, placeholder or weak password, so the demo accounts never get a guessable one. The container runs it on start when `SEED_DEMO_DATA=true`.
+
 ## Tests
 
 ```bash
 docker compose run --rm users pytest
 ```
 
-43 tests cover registration, login, token rotation and revocation, rate limiting, profile updates, password changes and address ownership. They run against PostgreSQL, the same database used in production.
+49 tests cover registration, login, token rotation and revocation, rate limiting, profile updates, password changes, address ownership and the demo accounts command. They run against PostgreSQL, the same database used in production.
 
 ## Configuration
 

@@ -98,12 +98,14 @@ Checkout errors carry a `code`:
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `seller/sales/` | Your own lines across all orders (`?status=` to filter). Other sellers' items and buyer details are hidden. |
+| GET | `seller/summary/` | Dashboard numbers: sales total, units sold, orders, products sold, lines waiting to ship, and units sold per day for the last 7 days. Only paid, shipped and delivered orders count. |
 
 ### Admins
 
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `admin/orders/` | All orders (`?status=` to filter) |
+| GET | `admin/orders/summary/` | Number of orders in each status |
 | GET | `admin/orders/{number}/` | Any order |
 | POST | `admin/orders/{number}/transition/` | `{status, note}` to move an order along |
 
@@ -137,7 +139,7 @@ The API is on http://localhost:8003.
 docker compose run --rm orders pytest
 ```
 
-68 tests, run against PostgreSQL with a fake product service: cart behaviour and limits, server-side pricing, shipping, every checkout error, idempotency (including a duplicate that waits on the lock), cart changes mid-checkout, price protection, snapshots, every legal and illegal status change, ownership, seller privacy, payment confirmation from the payments service, database constraints and HTTP failures when calling the product service.
+77 tests, run against PostgreSQL with a fake product service: cart behaviour and limits, server-side pricing, shipping, every checkout error, idempotency (including a duplicate that waits on the lock), cart changes mid-checkout, price protection, snapshots, every legal and illegal status change, ownership, seller privacy, the seller and admin summaries, payment confirmation from the payments service, database constraints and HTTP failures when calling the product service.
 
 ## Configuration
 

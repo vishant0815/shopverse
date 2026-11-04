@@ -81,7 +81,7 @@ flowchart TB
 | Layer | Technology |
 |---|---|
 | Frontend | Next.js, React |
-| Admin panel | React / Vue |
+| Seller and admin panel | Next.js (part of the storefront) |
 | Backend services | Django, Django REST Framework, FastAPI |
 | API gateway | Nginx |
 | Messaging | Apache Kafka |
@@ -200,8 +200,7 @@ sequenceDiagram
 ├── docker-compose.yml       # runs the full platform locally
 ├── .env.example             # environment variables template
 ├── .github/workflows/       # CI pipelines
-├── frontend/                # Next.js storefront (also proxies API calls)
-├── admin/                   # seller and admin panel
+├── frontend/                # Next.js storefront, seller and admin panel (also proxies API calls)
 ├── gateway/                 # API gateway configuration
 ├── infra/                   # shared infrastructure (Postgres init scripts)
 ├── scripts/                 # developer helpers (e.g. create_env.py)
@@ -248,6 +247,15 @@ This starts:
 
 Then open **http://localhost:3000**, create an account, add something to your basket, check out and pay with the test card.
 
+Two demo accounts are created on start, so you can try the panels straight away:
+
+| Account | Email | What you can do |
+|---|---|---|
+| Seller | `seller@shopverse.dev` | `/seller`: sales dashboard, add and edit products, see orders for your products |
+| Admin | `admin@shopverse.dev` | `/admin`: ship and deliver orders, manage categories, see every product |
+
+Both use the password in `DEMO_USER_PASSWORD` in your `.env` (`create_env.py` generates a random one). Set `SEED_DEMO_DATA=false` to start with no demo data.
+
 Try the catalogue straight away:
 
 ```bash
@@ -267,9 +275,9 @@ docker compose ps
 Each service has its own test suite, run against PostgreSQL inside Docker.
 
 ```bash
-docker compose run --rm users pytest       # 43 tests
-docker compose run --rm products pytest    # 60 tests
-docker compose run --rm orders pytest      # 68 tests
+docker compose run --rm users pytest       # 49 tests
+docker compose run --rm products pytest    # 63 tests
+docker compose run --rm orders pytest      # 77 tests
 docker compose run --rm payments pytest    # 46 tests
 ```
 
@@ -286,7 +294,7 @@ Tests will run automatically on every pull request once CI is added (see roadmap
 - [x] Cart and orders
 - [x] Payments with Stripe test mode
 - [x] Customer storefront (Next.js)
-- [ ] Admin panel
+- [x] Seller and admin panel
 
 **Phase 2: Scale and marketplace**
 - [ ] API gateway with rate limiting

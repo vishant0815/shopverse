@@ -57,7 +57,7 @@ curl "http://localhost:8002/api/v1/products/?category=fashion&colour=blue&orderi
 
 | Method | Endpoint | Description |
 |---|---|---|
-| GET / POST | `seller/products/` | Your products (drafts included); create a product, optionally with variants and images |
+| GET / POST | `seller/products/` | Your products (drafts included; `?status=` draft, active or archived, plus the usual search and filters); create a product, optionally with variants and images |
 | GET / PATCH / DELETE | `seller/products/{id}/` | Manage one product; DELETE archives it |
 | GET / POST | `seller/products/{id}/variants/` | List or add variants |
 | PATCH / DELETE | `seller/products/{id}/variants/{variant_id}/` | Update or deactivate a variant |
@@ -126,7 +126,7 @@ docker compose exec products python manage.py seed_catalog --reset  # recreate d
 docker compose run --rm products pytest
 ```
 
-60 tests cover browsing, sale prices, the variant lookup, every filter, sorting, pagination, N+1 protection, category caching, role checks, ownership, validation rules and forged tokens.
+63 tests cover browsing, sale prices, the variant lookup, every filter, sorting, pagination, N+1 protection, category caching, role checks, ownership, validation rules (including duplicate category names) and forged tokens.
 
 ## Configuration
 

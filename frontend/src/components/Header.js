@@ -34,6 +34,8 @@ export default function Header() {
         <nav className="ml-auto flex items-center gap-5 text-sm font-medium" aria-label="Account">
           {ready && user ? (
             <>
+              {user.role === "seller" && <Link href="/seller" className="font-semibold text-accent hover:underline">Your shop</Link>}
+              {user.role === "admin" && <Link href="/admin/orders" className="font-semibold text-accent hover:underline">Admin</Link>}
               <Link href="/orders" className="hover:text-accent">Orders</Link>
               <Link href="/account" className="hover:text-accent">{user.first_name}</Link>
               <button

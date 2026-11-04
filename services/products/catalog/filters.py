@@ -13,10 +13,12 @@ class ProductFilter(django_filters.FilterSet):
     size = django_filters.CharFilter(method="filter_variant_option")
     seller = django_filters.UUIDFilter(field_name="seller_id")
     on_sale = django_filters.BooleanFilter(method="filter_on_sale", help_text="Only products with a discounted variant")
+    # Only useful on the seller endpoints: the public catalogue only ever contains published products.
+    status = django_filters.ChoiceFilter(choices=Product.Status.choices)
 
     class Meta:
         model = Product
-        fields = ["category", "brand", "min_price", "max_price", "colour", "size", "seller", "on_sale"]
+        fields = ["category", "brand", "min_price", "max_price", "colour", "size", "seller", "on_sale", "status"]
 
     def filter_on_sale(self, queryset, name, value):
         discounted = ProductVariant.objects.filter(

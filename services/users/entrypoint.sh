@@ -5,6 +5,9 @@ set -e
 # One-off commands such as `pytest` skip this (the test runner manages its own database).
 if [ "$1" = "gunicorn" ]; then
   python manage.py migrate --noinput
+  if [ "$SEED_DEMO_DATA" = "true" ]; then
+    python manage.py seed_demo_users
+  fi
 fi
 
 exec "$@"
