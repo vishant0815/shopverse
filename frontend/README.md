@@ -39,14 +39,9 @@ Catalogue pages are rendered on the server, so they arrive as finished HTML (fas
 
 ## How it talks to the backend
 
-The browser only ever talks to this site. `next.config.mjs` forwards API paths to the right service, acting as a small API gateway:
+The browser only ever talks to one origin: the [API gateway](../gateway/README.md). It passes pages, scripts and images to this app, and sends every `/api/...` request straight to the right service after checking the access token and the rate limits. This app isn't published on its own port in Docker.
 
-| Path | Service |
-|---|---|
-| `/api/v1/auth/`, `/api/v1/users/`, `/api/v1/addresses/` | users |
-| `/api/v1/products/`, `/api/v1/categories/`, `/api/v1/variants/`, `/api/v1/seller/products/` | products |
-| `/api/v1/cart/`, `/api/v1/checkout/`, `/api/v1/orders/`, `/api/v1/seller/sales/`, `/api/v1/seller/summary/`, `/api/v1/admin/` | orders |
-| `/api/v1/payments/` | payments |
+Server-rendered catalogue pages are the one exception: they read the products service directly over the internal network, since they're cached, read-only and come from this server rather than a visitor.
 
 Because everything is on one origin, there's no CORS configuration, and the users service's refresh cookie is sent automatically.
 
@@ -95,18 +90,18 @@ Visible keyboard focus everywhere, a skip link, labelled controls (including the
 
 ## Running without Docker
 
-Start the backend services with Docker Compose, then:
+Start everything with Docker Compose (the site is then on `http://localhost:3000`), then run the storefront with live reload on another port:
 
 ```bash
 cd frontend
 npm install
-npm run dev            # http://localhost:3000
+npm run dev -- -p 3001   # http://localhost:3001
 ```
 
-Service addresses default to `localhost:8001`–`8004`; see `.env.local.example` to change them.
+Its API requests go to the gateway on `localhost:3000`, and catalogue pages read the products service on `localhost:8002`; see `.env.local.example` to change them.
 
 ## Tested
 
 The full journey was run in a real Chromium browser against all four services, in both the dark and the light theme: browsing, filtering, sorting, searching, variant picking, registering (including a weak password error shown next to the field), adding to the basket, changing quantities, checking out with a new address, a declined card, a successful payment, staying signed in after reload, the saved address being pre-selected next time, signing out, open-redirect protection, the 404 page and the mobile layout.
 
-The panels were tested the same way, with three browsers at once: the demo seller creates and publishes a product, changes its price and adds an option; a new customer finds it in the shop, buys it and pays; the seller sees the sale on the dashboard; the admin marks it shipped with a tracking note and then delivered; the customer sees both changes and the note; the admin adds a category (a duplicate name is refused), hides and shows it, and finds the product; the seller archives it and it leaves the shop; and a customer trying to open `/seller` or `/admin` is turned away. Automating this walkthrough in CI is on the roadmap.
+The panels were tested the same way, with three browsers at once: the demo seller creates and publishes a product, changes its price and adds an option; a new customer finds it in the shop, buys it and pays; the seller sees the sale on the dashboard; the admin marks it shipped with a tracking note and then delivered; the customer sees both changes and the note; the admin adds a category (a duplicate name is refused), hides and shows it, and finds the product; the seller archives it and it leaves the shop; and a customer trying to open `/seller` or `/admin` is turned away. Both walkthroughs now run through the API gateway, in both themes. Automating them in CI is on the roadmap.

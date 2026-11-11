@@ -34,7 +34,7 @@ flowchart TB
         ADMIN[Seller / admin panel]
     end
 
-    GW[API gateway<br/>JWT check · rate limiting · routing]
+    GW[API gateway<br/>FastAPI · JWT check · rate limiting · routing]
 
     subgraph Services
         USERS[User service<br/>Django + DRF]
@@ -51,7 +51,7 @@ flowchart TB
 
     subgraph Data
         PG[(PostgreSQL<br/>one DB per service)]
-        REDIS[(Redis<br/>cache · sessions · stock locks)]
+        REDIS[(Redis<br/>cache · rate limits · stock locks)]
         ES[(Elasticsearch<br/>search index)]
         SPARK[Spark<br/>analytics · ML]
     end
@@ -62,7 +62,7 @@ flowchart TB
     ORDERS & PAY & INV & PRODUCTS --> KAFKA
     KAFKA --> NOTIFY & SEARCH & INV & SPARK
     USERS & PRODUCTS & ORDERS & PAY & INV --> PG
-    ORDERS & INV --> REDIS
+    GW & ORDERS & INV --> REDIS
     SEARCH --> ES
     SPARK --> REC
 ```
@@ -83,7 +83,7 @@ flowchart TB
 | Frontend | Next.js, React |
 | Seller and admin panel | Next.js (part of the storefront) |
 | Backend services | Django, Django REST Framework, FastAPI |
-| API gateway | Nginx |
+| API gateway | FastAPI, httpx, Redis (token-bucket rate limits) |
 | Messaging | Apache Kafka |
 | Databases | PostgreSQL |
 | Cache and locks | Redis |
@@ -101,6 +101,7 @@ flowchart TB
 
 | Service | Responsibility | Stack |
 |---|---|---|
+| `gateway` | Single entry point: routing, token check, rate limits, circuit breakers, request ids | FastAPI + Redis |
 | `users` | Registration, login, JWT tokens, profiles, addresses, roles | Django + DRF |
 | `products` | Catalogue, categories, variants, images, seller listings | Django + DRF |
 | `orders` | Cart, checkout, order lifecycle, saga orchestration | Django + DRF |
@@ -157,7 +158,8 @@ Hot data (product pages, categories) is cached in Redis, images are served from 
 - **Authorisation:** role-based access (customer, seller, admin) plus ownership checks on every resource, so a user can only access their own orders and addresses
 - **OWASP Top 10:** ORM-only queries (SQL injection), input validation with DRF serializers and Pydantic, output escaping and Content Security Policy headers (XSS), CSRF protection
 - **Payments:** card details never touch this system; Stripe handles them, webhook signatures are verified, and idempotency keys prevent double charges
-- **Rate limiting:** at the gateway, to slow down brute-force logins and scraping
+- **Rate limiting:** at the gateway, with token buckets in Redis: tight limits on sign-in attempts per address, separate limits for token refresh and checkout, counted per account once signed in. Callers can't fake their address to dodge them
+- **One way in:** only the gateway is exposed; services' internal endpoints aren't routed, and bad tokens are refused before reaching a service
 - **Secrets:** loaded from environment variables, never committed (see `.env.example`)
 - **Audit logging:** all admin actions are recorded
 
@@ -200,8 +202,8 @@ sequenceDiagram
 ├── docker-compose.yml       # runs the full platform locally
 ├── .env.example             # environment variables template
 ├── .github/workflows/       # CI pipelines
-├── frontend/                # Next.js storefront, seller and admin panel (also proxies API calls)
-├── gateway/                 # API gateway configuration
+├── frontend/                # Next.js storefront, seller and admin panel
+├── gateway/                 # API gateway: the single entry point (FastAPI)
 ├── infra/                   # shared infrastructure (Postgres init scripts)
 ├── scripts/                 # developer helpers (e.g. create_env.py)
 ├── services/
@@ -243,7 +245,10 @@ This starts:
 | `shopverse-products` | 8002 | [Product service](services/products/README.md): categories, products, variants, filters; loads demo data |
 | `shopverse-orders` | 8003 | [Orders service](services/orders/README.md): cart, idempotent checkout, order lifecycle |
 | `shopverse-payments` | 8004 | [Payments service](services/payments/README.md): Stripe test mode or a fake provider; API docs at `/docs` |
-| `shopverse-frontend` | 3000 | [Storefront](frontend/README.md): the website, and the single entry point for the browser |
+| `shopverse-frontend` | (internal) | [Storefront](frontend/README.md): the website, seller and admin panel; reached through the gateway |
+| `shopverse-gateway` | 3000 | [API gateway](gateway/README.md): the single entry point, serving pages and `/api/...`; readiness at `/health/ready` |
+
+The service ports (8001–8004) are published for local debugging only; the site and its API are both served by the gateway.
 
 Then open **http://localhost:3000**, create an account, add something to your basket, check out and pay with the test card.
 
@@ -259,13 +264,15 @@ Both use the password in `DEMO_USER_PASSWORD` in your `.env` (`create_env.py` ge
 Try the catalogue straight away:
 
 ```bash
-curl "http://localhost:8002/api/v1/products/?category=electronics&ordering=min_price"
+curl -i "http://localhost:3000/api/v1/products/?category=electronics&ordering=min_price"
+# the RateLimit-* and X-Request-ID headers come from the gateway
 ```
 
 Check that everything is healthy:
 
 ```bash
 docker compose ps
+curl http://localhost:3000/health/ready   # the gateway checks Redis and every service
 ```
 
 ---
@@ -275,7 +282,8 @@ docker compose ps
 Each service has its own test suite, run against PostgreSQL inside Docker.
 
 ```bash
-docker compose run --rm users pytest       # 49 tests
+docker compose run --rm gateway pytest     # 92 tests
+docker compose run --rm users pytest       # 51 tests
 docker compose run --rm products pytest    # 63 tests
 docker compose run --rm orders pytest      # 77 tests
 docker compose run --rm payments pytest    # 46 tests
@@ -297,7 +305,7 @@ Tests will run automatically on every pull request once CI is added (see roadmap
 - [x] Seller and admin panel
 
 **Phase 2: Scale and marketplace**
-- [ ] API gateway with rate limiting
+- [x] API gateway with rate limiting
 - [ ] Kafka event bus and saga orchestration
 - [ ] Inventory service with stock reservation
 - [ ] Elasticsearch search service

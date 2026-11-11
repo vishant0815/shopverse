@@ -118,6 +118,8 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 
 ## 013: The storefront as the browser's only entry point
 
+> **Replaced by 016.** The gateway now sits in front of the storefront. The one-origin idea below still holds.
+
 **Decision:** The browser talks only to the Next.js storefront. Its rewrites forward `/api/v1/...` paths, unchanged, to the right service. Catalogue pages are rendered on the server; signed-in pages run in the browser.
 
 **Why:** One origin means no CORS rules to get wrong, and the refresh cookie (scoped to `/api/v1/auth/`) works without changes because paths are forwarded as they are. Server rendering makes product pages fast and readable by search engines, while basket and order pages depend on the signed-in user and gain nothing from it.
@@ -143,3 +145,31 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 **Why:** A second app would mean a second build, a second set of components and a second place where sign-in has to work, for pages that mostly list and edit data the services already serve. The role check in the browser only decides what to show; every request is still checked by the service that owns the data, so a customer who opens `/admin` by hand gets nothing from the API either.
 
 **Trade-off:** Customers download a little of the panel code as shared chunks, and a bug in a shared component can affect both the shop and the panel. If the panel grows large (bulk uploads, reports), splitting it into its own app is straightforward because it already only talks to the APIs.
+
+---
+
+## 016: A custom gateway in front of everything, including the storefront
+
+**Decision:** A small FastAPI gateway is the only published entry point. It serves the whole site: pages go to the storefront, and `/api/...` goes to the services after a token check and a rate limit. It replaces the storefront's role as a proxy (013), and also stands in for the Nginx gateway first planned.
+
+**Why the gateway is in front, not behind the storefront:** The first version put it behind Next.js, which forwards API calls to it. Testing showed two problems. First, Next.js passes on whatever `X-Forwarded-For` the browser sends, so a client could choose its own address and dodge per-address limits. Second, it adds nothing when the header is missing, so every anonymous visitor shared one address: the storefront's. Rate limits by address only work if the component doing the limiting sees the real connection. So the gateway became the edge, and the storefront is no longer published.
+
+**Why a custom gateway, not Nginx or Kong:**
+- **Redis-backed limits.** The rules needed limits counted per signed-in user once a token is verified, and per address before that, kept in Redis so every replica agrees. Nginx's built-in limiter keeps its counts in each instance's memory, and the alternatives are Lua modules or Kong plugins.
+- **Readable and testable.** A few hundred lines of Python, with 92 tests, show exactly how routing, limits and failures behave.
+
+**Trade-off:** It's one more service to run and keep fast; locally it adds about 4 ms per request. TLS termination and caching static files are still left to whatever sits in front in production (a load balancer or CDN). Setting `TRUSTED_PROXY_HOPS=1` makes the gateway trust exactly that one hop. Moving to Kong or Envoy later is straightforward, because services only ever see plain HTTP with the usual forwarding headers.
+
+---
+
+## 017: Token buckets in Redis that fail open
+
+**Decision:** Each caller gets a token bucket per kind of request (sign-in, token refresh, checkout, everything else), kept in Redis and updated by one Lua script. Callers are counted per account when signed in, and per address otherwise. If Redis can't be reached, requests are let through and a warning is logged.
+
+**Why:**
+- **Shape.** A token bucket allows short bursts, like a page that makes several calls at once, while stopping a steady flood. A fixed one-minute window would allow double the limit across a window boundary.
+- **No races.** Doing the check and the take in one script is atomic, so concurrent requests can't overspend; a test proves it with 50 requests at once against a bucket of 10. The script uses Redis's clock, so gateways with drifting clocks agree.
+- **Refresh has its own limit.** Token refresh happens on every page load, so sharing the sign-in limit would sign people out for browsing quickly. The users service had exactly that problem, and the browser tests hit it; refresh now has its own limit there too.
+
+**Trade-off:** Failing open means a Redis outage removes rate limiting until Redis is back. The alternative, failing closed, would turn a cache outage into a full shop outage. The users service keeps its own sign-in limit as a second line, so brute-forcing passwords stays slowed even then.
+

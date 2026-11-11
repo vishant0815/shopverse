@@ -111,6 +111,17 @@ class TestLogin:
 
         assert statuses == [400, 400, 400, 429]
 
+    def test_callers_behind_the_gateway_are_limited_separately(self, api_client, user, monkeypatch, settings):
+        settings.REST_FRAMEWORK = {**settings.REST_FRAMEWORK, "NUM_PROXIES": 1}
+        monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", {"auth": "1/minute"})
+        payload = {"email": user.email, "password": "wrong-password-1"}
+
+        first = api_client.post(LOGIN, payload, HTTP_X_FORWARDED_FOR="198.51.100.1")
+        again = api_client.post(LOGIN, payload, HTTP_X_FORWARDED_FOR="198.51.100.1")
+        someone_else = api_client.post(LOGIN, payload, HTTP_X_FORWARDED_FOR="198.51.100.2")
+
+        assert [first.status_code, again.status_code, someone_else.status_code] == [400, 429, 400]
+
 
 class TestRefreshAndLogout:
     def login(self, api_client, user):
@@ -133,6 +144,14 @@ class TestRefreshAndLogout:
         response = api_client.post(REFRESH)
 
         assert response.status_code == 401
+
+    def test_refresh_has_its_own_limit_separate_from_sign_in(self, api_client, user, monkeypatch):
+        monkeypatch.setattr(ScopedRateThrottle, "THROTTLE_RATES", {"auth": "1/minute", "refresh": "2/minute"})
+        assert self.login(api_client, user).status_code == 200
+
+        statuses = [api_client.post(REFRESH).status_code for _ in range(3)]
+
+        assert statuses == [200, 200, 429]
 
     def test_refresh_without_cookie_is_rejected(self, api_client):
         assert api_client.post(REFRESH).status_code == 401

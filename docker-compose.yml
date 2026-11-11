@@ -60,6 +60,8 @@ services:
       DB_PORT: 5432
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
+      # Requests arrive through the gateway, which puts the caller's address in X-Forwarded-For.
+      NUM_PROXIES: 1
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-}
     ports:
@@ -183,18 +185,34 @@ services:
     networks:
       - backend
 
-  frontend:
+  gateway:
     build:
-      context: ./frontend
+      context: ./gateway
       args:
-        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
-    container_name: shopverse-frontend
+        INSTALL_DEV: "true"
+    container_name: shopverse-gateway
     environment:
-      # Used by server-rendered pages; browser requests go through the build-time rewrites.
-      PRODUCTS_API_URL: http://products:8000
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
+      USERS_SERVICE_URL: http://users:8000
+      PRODUCTS_SERVICE_URL: http://products:8000
+      ORDERS_SERVICE_URL: http://orders:8000
+      PAYMENTS_SERVICE_URL: http://payments:8000
+      STOREFRONT_URL: http://frontend:3000
+      # Browsers connect straight to the gateway. Behind a cloud load balancer, set 1.
+      TRUSTED_PROXY_HOPS: 0
+      RATE_LIMIT_DEFAULT: ${RATE_LIMIT_DEFAULT:-300/minute}
+      RATE_LIMIT_LOGIN: ${RATE_LIMIT_LOGIN:-10/minute}
+      RATE_LIMIT_REFRESH: ${RATE_LIMIT_REFRESH:-60/minute}
+      RATE_LIMIT_CHECKOUT: ${RATE_LIMIT_CHECKOUT:-10/minute}
+    # The only published port for the app: the whole site, pages and API, comes through here.
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${SITE_PORT:-3000}:8000"
     depends_on:
+      redis:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
       users:
         condition: service_healthy
       products:
@@ -202,6 +220,33 @@ services:
       orders:
         condition: service_healthy
       payments:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+    container_name: shopverse-frontend
+    environment:
+      # Server-rendered catalogue pages read the products service directly over the
+      # internal network (cached, read-only). Browsers reach this only through the gateway.
+      PRODUCTS_API_URL: http://products:8000
+    # No published port: visitors come in through the gateway, which is what lets it
+    # see their real address for rate limiting.
+    expose:
+      - "3000"
+    depends_on:
+      products:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]

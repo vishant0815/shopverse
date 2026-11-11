@@ -81,6 +81,8 @@ class RefreshView(AuthThrottleMixin, APIView):
     """Issues a new access token and rotates the refresh token.
     The old refresh token is blacklisted, so a stolen one can only be used once."""
 
+    # Its own, roomier limit: sharing sign-in's would log people out for browsing quickly.
+    throttle_scope = "refresh"
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
 
