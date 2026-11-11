@@ -129,7 +129,12 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
     "DEFAULT_THROTTLE_RATES": {
         "auth": env("AUTH_THROTTLE_RATE", "10/minute"),
+        # Every page load refreshes the access token, so this needs more room than sign-in.
+        "refresh": env("REFRESH_THROTTLE_RATE", "60/minute"),
     },
+    # Behind the API gateway set this to 1: the gateway sends a one-entry X-Forwarded-For
+    # holding the real caller's address, so limits count per caller, not per gateway.
+    "NUM_PROXIES": int(env("NUM_PROXIES")) if env("NUM_PROXIES") else None,
 }
 
 SIMPLE_JWT = {

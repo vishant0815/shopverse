@@ -87,7 +87,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:8003/api/v1/orders/SV-2
 1. Create a free Stripe account and copy the **test** secret key from https://dashboard.stripe.com/test/apikeys.
 2. Install the Stripe CLI and forward webhooks to the service:
    ```bash
-   stripe listen --forward-to localhost:8004/api/v1/webhooks/stripe
+   stripe listen --forward-to localhost:3000/api/v1/webhooks/stripe
    ```
    It prints a webhook signing secret (`whsec_...`).
 3. In `.env`:

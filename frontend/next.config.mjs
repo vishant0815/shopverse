@@ -1,33 +1,11 @@
-// The storefront is also the API gateway for the browser: every request goes to
-// this same origin and is forwarded to the right service. That means no CORS setup,
-// and the users service's refresh-token cookie (path /api/v1/auth/) just works,
-// because paths are forwarded unchanged.
+// In Docker the API gateway sits in front of this app: it serves the pages from here and
+// sends /api/... straight to the services, so these rewrites are never used there.
+// They're for `npm run dev`, where the browser talks to this app directly: API requests
+// are passed, path unchanged, to the gateway. Either way the browser sees one origin, so
+// there's no CORS setup and the refresh-token cookie (path /api/v1/auth/) just works.
 //
-// Service addresses are read when the app is built (rewrites are compiled in).
-const services = {
-  users: process.env.USERS_API_URL || "http://localhost:8001",
-  products: process.env.PRODUCTS_API_URL || "http://localhost:8002",
-  orders: process.env.ORDERS_API_URL || "http://localhost:8003",
-  payments: process.env.PAYMENTS_API_URL || "http://localhost:8004",
-};
-
-const routes = [
-  ["/api/v1/auth/:path*", "users"],
-  ["/api/v1/users/:path*", "users"],
-  ["/api/v1/addresses/:path*", "users"],
-  ["/api/v1/categories/:path*", "products"],
-  ["/api/v1/products/:path*", "products"],
-  ["/api/v1/variants/:path*", "products"],
-  ["/api/v1/seller/products/:path*", "products"],
-  ["/api/v1/cart/:path*", "orders"],
-  ["/api/v1/checkout/:path*", "orders"],
-  ["/api/v1/orders/:path*", "orders"],
-  ["/api/v1/seller/sales/:path*", "orders"],
-  ["/api/v1/seller/summary/:path*", "orders"],
-  ["/api/v1/admin/:path*", "orders"],
-  ["/api/v1/payments/:path*", "payments"],
-  ["/api/payments-health", "payments", "/health"],
-];
+// The gateway address is read when the app is built (rewrites are compiled in).
+const gateway = process.env.GATEWAY_URL || "http://localhost:3000";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -36,19 +14,13 @@ const nextConfig = {
   skipTrailingSlashRedirect: true,
   poweredByHeader: false,
   async rewrites() {
-    return routes.flatMap(([source, service, target]) => {
-      const base = services[service];
-      if (target) return [{ source, destination: `${base}${target}` }];
-      // ":path*" doesn't capture a trailing slash, so without the first rule "/api/v1/cart/"
-      // would be forwarded as "/api/v1/cart", Django would redirect back to the slash
-      // version, and the browser would loop. Keep the slash when the request has one.
-      const prefix = source.replace("/:path*", "");
-      return [
-        { source: `${prefix}/`, destination: `${base}${prefix}/` },
-        { source: `${prefix}/:path+/`, destination: `${base}${prefix}/:path+/` },
-        { source: `${prefix}/:path*`, destination: `${base}${prefix}/:path*` },
-      ];
-    });
+    // ":path*" doesn't capture a trailing slash, so without the first rule
+    // "/api/v1/cart/" would be forwarded as "/api/v1/cart", Django would redirect back
+    // to the slash version, and the browser would loop. Keep the slash when it's there.
+    return [
+      { source: "/api/:path+/", destination: `${gateway}/api/:path+/` },
+      { source: "/api/:path*", destination: `${gateway}/api/:path*` },
+    ];
   },
   async headers() {
     return [

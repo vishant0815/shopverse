@@ -72,3 +72,6 @@ Thumbs.db
 
 # Load test output
 load-tests/results/*.json
+
+# Redis snapshot written by a local redis-server
+dump.rdb

@@ -102,7 +102,7 @@ The password comes from `DEMO_USER_PASSWORD`. The command refuses to run with an
 docker compose run --rm users pytest
 ```
 
-49 tests cover registration, login, token rotation and revocation, rate limiting, profile updates, password changes, address ownership and the demo accounts command. They run against PostgreSQL, the same database used in production.
+51 tests cover registration, login, token rotation and revocation, rate limiting (including separate limits for callers behind the gateway), profile updates, password changes, address ownership and the demo accounts command. They run against PostgreSQL, the same database used in production.
 
 ## Configuration
 
@@ -114,7 +114,9 @@ docker compose run --rm users pytest
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | `users_db`, required, required, `localhost`, `5432` | PostgreSQL connection |
 | `REDIS_URL` | unset (in-memory cache) | Redis for rate-limit counters |
-| `AUTH_THROTTLE_RATE` | `10/minute` | Limit for register, login and refresh |
+| `AUTH_THROTTLE_RATE` | `10/minute` | Limit for register and login, per address |
+| `REFRESH_THROTTLE_RATE` | `60/minute` | Limit for token refresh (once per page load), per address |
+| `NUM_PROXIES` | unset | Set to `1` behind the [gateway](../../gateway/README.md), which puts the caller's real address in `X-Forwarded-For` |
 | `JWT_ACCESS_MINUTES` | `15` | Access token lifetime |
 | `JWT_REFRESH_DAYS` | `7` | Refresh token lifetime |
 | `REFRESH_COOKIE_SECURE` | `true` unless debug | Send the cookie over HTTPS only |
