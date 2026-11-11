@@ -1,4 +1,10 @@
+from datetime import timedelta
+from decimal import Decimal
+
 from django.conf import settings
+from django.db.models import Count, Sum
+from django.db.models.functions import TruncDate
+from django.utils import timezone
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
@@ -296,3 +302,54 @@ class PaymentConfirmedView(APIView):
                 )
             # paid, shipped or delivered: already handled, nothing to do.
         return Response({"number": order.number, "status": order.status})
+
+
+# Orders that count as a sale: money has been taken.
+SOLD_STATUSES = [Order.Status.PAID, Order.Status.SHIPPED, Order.Status.DELIVERED]
+
+
+class SellerSummaryView(APIView):
+    """Numbers for the seller dashboard, from the seller's own order lines only."""
+
+    permission_classes = [IsSeller]
+    DAYS = 7
+
+    def get(self, request):
+        lines = OrderItem.objects.filter(seller_id=user_id_of(request))
+        sold = lines.filter(order__status__in=SOLD_STATUSES)
+        totals = sold.aggregate(revenue=Sum("line_total"), units=Sum("quantity"))
+
+        today = timezone.now().date()
+        start = today - timedelta(days=self.DAYS - 1)
+        per_day = dict(
+            sold.filter(order__created_at__date__gte=start)
+            .annotate(day=TruncDate("order__created_at"))
+            .values_list("day")
+            .annotate(units=Sum("quantity"))
+            .values_list("day", "units")
+        )
+
+        return Response({
+            "currency": settings.CURRENCY,
+            "revenue": str(totals["revenue"] or Decimal("0.00")),
+            "units_sold": totals["units"] or 0,
+            "orders": sold.values("order_id").distinct().count(),
+            "products_sold": sold.values("product_id").distinct().count(),
+            # Paid orders with this seller's items that haven't been shipped yet.
+            "to_ship": lines.filter(order__status=Order.Status.PAID).values("order_id").distinct().count(),
+            "daily_units": [
+                {"date": (start + timedelta(days=i)).isoformat(), "units": per_day.get(start + timedelta(days=i), 0)}
+                for i in range(self.DAYS)
+            ],
+        })
+
+
+class AdminOrderSummaryView(APIView):
+    """How many orders are in each status, for the admin's status tabs."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        counts = dict(Order.objects.values_list("status").annotate(n=Count("id")).values_list("status", "n"))
+        by_status = {status: counts.get(status, 0) for status, _ in Order.Status.choices}
+        return Response({"total": sum(by_status.values()), "by_status": by_status})

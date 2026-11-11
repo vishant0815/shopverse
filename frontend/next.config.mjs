@@ -23,6 +23,8 @@ const routes = [
   ["/api/v1/checkout/:path*", "orders"],
   ["/api/v1/orders/:path*", "orders"],
   ["/api/v1/seller/sales/:path*", "orders"],
+  ["/api/v1/seller/summary/:path*", "orders"],
+  ["/api/v1/admin/:path*", "orders"],
   ["/api/v1/payments/:path*", "payments"],
   ["/api/payments-health", "payments", "/health"],
 ];

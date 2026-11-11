@@ -1,6 +1,6 @@
 # Storefront
 
-The customer-facing website for Shopverse: browse the catalogue, filter and search, pick a variant, fill a basket, check out and pay.
+The Shopverse website: the shop customers use (browse, filter, search, basket, checkout, payment), plus the seller and admin panels.
 
 **Stack:** Next.js 15 (App Router), React 19, JavaScript, Tailwind CSS 4, Stripe.js
 
@@ -19,6 +19,22 @@ Runs at http://localhost:3000 after `docker compose up -d --build`.
 | `/orders`, `/orders/{number}` | Order history, progress, status history, payment, cancelling | Browser |
 | `/account` | Profile details and saved addresses | Browser |
 
+### Seller and admin panel
+
+Only open to the matching role. Anyone else who signs in sees a short "this area is for sellers/admins" page, and the services check the role in the token again on every request.
+
+| Page | What it does |
+|---|---|
+| `/seller` | Dashboard: sales total, units sold, orders waiting to ship, live products, recent sales and a 7-day chart |
+| `/seller/products` | Your products with status filter and search; archive a product |
+| `/seller/products/new`, `/seller/products/{id}` | Product editor: details, category, options (item code, colour, size, price, "was" price), photos, draft/published/archived |
+| `/seller/sales` | Every order line for your products, filtered by status. Buyer details stay private |
+| `/admin/orders`, `/admin/orders/{number}` | Orders by status with counts; mark shipped or delivered with a note the customer sees; cancel (with a warning that refunds are done by hand) |
+| `/admin/categories` | Add, rename, hide and show categories |
+| `/admin/products`, `/admin/products/{id}` | Every seller's products, with the same editor |
+
+The product editor saves an existing product in a safe order: options and photos first, then the product itself, so a product is only published once it really has something to buy.
+
 Catalogue pages are rendered on the server, so they arrive as finished HTML (fast first load, readable by search engines). The filter form is a plain HTML form, so filtering works even before JavaScript loads. Pages that depend on the signed-in user run in the browser.
 
 ## How it talks to the backend
@@ -29,7 +45,7 @@ The browser only ever talks to this site. `next.config.mjs` forwards API paths t
 |---|---|
 | `/api/v1/auth/`, `/api/v1/users/`, `/api/v1/addresses/` | users |
 | `/api/v1/products/`, `/api/v1/categories/`, `/api/v1/variants/`, `/api/v1/seller/products/` | products |
-| `/api/v1/cart/`, `/api/v1/checkout/`, `/api/v1/orders/`, `/api/v1/seller/sales/` | orders |
+| `/api/v1/cart/`, `/api/v1/checkout/`, `/api/v1/orders/`, `/api/v1/seller/sales/`, `/api/v1/seller/summary/`, `/api/v1/admin/` | orders |
 | `/api/v1/payments/` | payments |
 
 Because everything is on one origin, there's no CORS configuration, and the users service's refresh cookie is sent automatically.
@@ -91,4 +107,6 @@ Service addresses default to `localhost:8001`–`8004`; see `.env.local.example`
 
 ## Tested
 
-The full journey was run in a real Chromium browser against all four services, in both the dark and the light theme: browsing, filtering, sorting, searching, variant picking, registering (including a weak password error shown next to the field), adding to the basket, changing quantities, checking out with a new address, a declined card, a successful payment, staying signed in after reload, the saved address being pre-selected next time, signing out, open-redirect protection, the 404 page and the mobile layout. Automating this walkthrough in CI is on the roadmap.
+The full journey was run in a real Chromium browser against all four services, in both the dark and the light theme: browsing, filtering, sorting, searching, variant picking, registering (including a weak password error shown next to the field), adding to the basket, changing quantities, checking out with a new address, a declined card, a successful payment, staying signed in after reload, the saved address being pre-selected next time, signing out, open-redirect protection, the 404 page and the mobile layout.
+
+The panels were tested the same way, with three browsers at once: the demo seller creates and publishes a product, changes its price and adds an option; a new customer finds it in the shop, buys it and pays; the seller sees the sale on the dashboard; the admin marks it shipped with a tracking note and then delivered; the customer sees both changes and the note; the admin adds a category (a duplicate name is refused), hides and shows it, and finds the product; the seller archives it and it leaves the shop; and a customer trying to open `/seller` or `/admin` is turned away. Automating this walkthrough in CI is on the roadmap.

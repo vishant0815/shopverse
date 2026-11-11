@@ -60,6 +60,8 @@ services:
       DB_PORT: 5432
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       REFRESH_COOKIE_SECURE: ${REFRESH_COOKIE_SECURE:-false}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-}
     ports:
       - "${USERS_PORT:-8001}:8000"
     depends_on:

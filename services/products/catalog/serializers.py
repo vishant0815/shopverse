@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.utils.text import slugify
 from rest_framework import serializers
 
 from .models import Category, Product, ProductImage, ProductVariant
@@ -16,6 +17,12 @@ class CategorySerializer(serializers.ModelSerializer):
         extra_kwargs = {"slug": {"required": False}}
 
     def validate(self, attrs):
+        # The slug is made from the name when it isn't given, so check it's free
+        # here rather than letting the database reject it.
+        if self.instance is None and not attrs.get("slug"):
+            slug = slugify(attrs.get("name", ""))[:140]
+            if Category.objects.filter(slug=slug).exists():
+                raise serializers.ValidationError({"slug": "A category with this name already exists."})
         parent = attrs.get("parent")
         if self.instance and parent:
             # A category can't be moved under itself or one of its own children.

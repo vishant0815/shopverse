@@ -224,3 +224,22 @@ def test_database_rejects_non_positive_price(make_product):
     product = make_product()
     with pytest.raises(IntegrityError):
         ProductVariant.objects.filter(product=product).update(price=0)
+
+
+class TestStatusFilter:
+    def test_seller_can_filter_own_products_by_status(self, seller, make_product):
+        make_product(seller_id=seller.user_id, name="Live")
+        make_product(seller_id=seller.user_id, name="Draft", status=Product.Status.DRAFT)
+        make_product(seller_id=seller.user_id, name="Old", status=Product.Status.ARCHIVED)
+
+        def names(status):
+            return [p["name"] for p in seller.get(SELLER_PRODUCTS, {"status": status}).data["results"]]
+
+        assert names("active") == ["Live"]
+        assert names("draft") == ["Draft"]
+        assert names("archived") == ["Old"]
+
+    def test_public_catalogue_cannot_reveal_drafts(self, anon, make_product):
+        make_product(name="Secret draft", status=Product.Status.DRAFT)
+
+        assert anon.get("/api/v1/products/", {"status": "draft"}).data["count"] == 0

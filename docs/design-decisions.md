@@ -133,3 +133,13 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 **Why:** Components only use names like `text-accent` and `text-power`, so a whole theme changes in one place, and the light theme's "dark red" is the same variable as the dark theme's bright red. Setting the theme before the first paint avoids the common flash of the wrong theme on server-rendered pages. Leaving the attribute out of React's output matters: on pages React renders entirely in the browser (such as the 404 page), React would otherwise overwrite the saved theme. An early version had exactly that bug, found by the browser tests.
 
 **Trade-off:** The saved choice lives in the browser (`localStorage`), so it doesn't follow a user to another device. Saving it on the user's profile is a small follow-up if needed.
+
+---
+
+## 015: The seller and admin panel lives inside the storefront
+
+**Decision:** The panels are pages of the existing Next.js app (`/seller`, `/admin`) rather than a separate admin app. They reuse the same components, theme and API proxy, and call the same service endpoints the rest of the platform already exposes. The only new backend code is two read-only summary endpoints for the dashboard and the order tabs.
+
+**Why:** A second app would mean a second build, a second set of components and a second place where sign-in has to work, for pages that mostly list and edit data the services already serve. The role check in the browser only decides what to show; every request is still checked by the service that owns the data, so a customer who opens `/admin` by hand gets nothing from the API either.
+
+**Trade-off:** Customers download a little of the panel code as shared chunks, and a bug in a shared component can affect both the shop and the panel. If the panel grows large (bulk uploads, reports), splitting it into its own app is straightforward because it already only talks to the APIs.

@@ -55,6 +55,7 @@ def main() -> int:
     print("    docker compose down -v")
     print()
     print("Next: docker compose up -d --build")
+    print("Demo logins: seller@shopverse.dev and admin@shopverse.dev, password = DEMO_USER_PASSWORD in .env")
     return 0
 
 

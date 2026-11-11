@@ -49,6 +49,13 @@ def test_only_admin_can_create(customer, seller, admin, categories):
     assert response.data["parent"] == "electronics"
 
 
+def test_duplicate_name_is_a_clear_error(admin, categories):
+    response = admin.post(CATEGORIES, {"name": "Electronics", "parent": None}, format="json")
+
+    assert response.status_code == 400
+    assert "slug" in response.data
+
+
 def test_category_cannot_become_its_own_ancestor(admin, categories):
     response = admin.patch(f"{CATEGORIES}electronics/", {"parent": "phones"}, format="json")
 
