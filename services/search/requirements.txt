@@ -1,0 +1,5 @@
+fastapi==0.119.1
+uvicorn[standard]==0.54.0
+pydantic-settings==2.16.2
+elasticsearch==8.15.1
+confluent-kafka==2.16.1

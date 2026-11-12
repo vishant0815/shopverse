@@ -32,6 +32,7 @@ log = logging.getLogger("messaging")
 
 TOPICS = [
     "catalog.variants",
+    "catalog.products",
     "inventory.commands",
     "inventory.events",
     "payments.commands",

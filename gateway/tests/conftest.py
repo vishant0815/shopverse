@@ -30,6 +30,7 @@ BASE_SETTINGS = {
     "orders_service_url": "http://orders:8000",
     "payments_service_url": "http://payments:8000",
     "inventory_service_url": "http://inventory:8000",
+    "search_service_url": "http://search:8000",
     "storefront_url": "http://storefront:3000",
     "trusted_proxy_hops": 0,
 }
