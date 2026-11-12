@@ -1,7 +1,5 @@
 """Starting payments and completing them with the fake provider."""
 
-from decimal import Decimal
-
 import pytest
 from sqlalchemy import func, select
 
@@ -9,6 +7,7 @@ from app import providers as providers_module
 from app.db import get_sessionmaker
 from app.models import Payment, ProcessedEvent
 from app.providers import ProviderError
+from app import service
 from app.routes import payments as payment_routes
 
 PAYMENTS = "/api/v1/payments"
@@ -96,6 +95,9 @@ class TestStart:
             def parse_webhook(self, payload, signature):
                 raise ValueError
 
+            def refund(self, **kwargs):
+                raise ProviderError("Stripe is down")
+
         monkeypatch.setattr(payment_routes, "get_provider", lambda: BrokenProvider())
         number = orders.add(customer.id)
 
@@ -126,7 +128,7 @@ class TestStatus:
 
 
 class TestCompleting:
-    def test_success_marks_payment_and_order_paid(self, customer, orders):
+    def test_success_is_announced_to_the_orders_saga(self, customer, orders, announced):
         number = orders.add(customer.id, total="59.98")
         payment_id = start(customer, number).json()["id"]
 
@@ -134,8 +136,9 @@ class TestCompleting:
 
         assert response.status_code == 200
         assert response.json()["payment"]["status"] == "succeeded"
-        assert orders.orders[number]["status"] == "paid"
-        assert orders.confirmed == [(number, payment_id, Decimal("59.98"), "GBP")]
+        assert announced() == [("PaymentSucceeded", {
+            "order_number": number, "payment_id": payment_id, "amount": "59.98", "currency": "GBP",
+        })]
 
     def test_paid_order_cannot_be_paid_again(self, customer, orders):
         number = orders.add(customer.id)
@@ -147,14 +150,16 @@ class TestCompleting:
         assert response.status_code == 409
         assert response.json()["detail"]["code"] == "already_paid"
 
-    def test_failure_is_recorded_and_can_be_retried(self, customer, orders):
+    def test_failure_is_recorded_and_can_be_retried(self, customer, orders, announced):
         number = orders.add(customer.id)
         payment_id = start(customer, number).json()["id"]
 
         failed = simulate(customer, number, "failed")
         assert failed.json()["payment"]["status"] == "failed"
         assert "declined" in failed.json()["payment"]["last_error"]
-        assert orders.orders[number]["status"] == "pending_payment"
+        assert announced("PaymentFailed") == [("PaymentFailed", {
+            "order_number": number, "payment_id": payment_id, "error": "Your card was declined. (simulated)",
+        })]
 
         retry = start(customer, number)
         assert retry.status_code == 200
@@ -162,27 +167,47 @@ class TestCompleting:
         assert retry.json()["status"] == "requires_payment"
 
         assert simulate(customer, number).json()["payment"]["status"] == "succeeded"
+        assert [kind for kind, _ in announced()] == ["PaymentFailed", "PaymentSucceeded"]
 
-    def test_order_cancelled_meanwhile_flags_a_refund(self, customer, orders):
+    def test_success_is_announced_even_if_the_order_was_cancelled_meanwhile(self, customer, orders, announced):
+        # The saga is the one that knows the order was cancelled; it asks for the refund itself.
         number = orders.add(customer.id)
         start(customer, number)
         orders.orders[number]["status"] = "cancelled"
 
         response = simulate(customer, number)
 
-        assert response.json()["payment"]["status"] == "refund_required"
-        assert orders.confirmed == []
+        assert response.json()["payment"]["status"] == "succeeded"
+        assert [kind for kind, _ in announced()] == ["PaymentSucceeded"]
 
-    def test_orders_down_during_confirmation_can_be_retried(self, customer, orders):
+    def test_orders_being_down_does_not_block_a_payment(self, customer, orders, announced):
         number = orders.add(customer.id)
         start(customer, number)
         orders.down = True
 
-        assert simulate(customer, number).status_code == 503
-        # Nothing was recorded, so the provider's retry is processed normally.
-        assert count(ProcessedEvent) == 0
+        response = simulate(customer, number)
 
-        orders.down = False
+        assert response.status_code == 200
+        assert response.json()["payment"]["status"] == "succeeded"
+        assert len(announced("PaymentSucceeded")) == 1
+
+    def test_a_failed_write_records_nothing(self, customer, orders, monkeypatch):
+        number = orders.add(customer.id)
+        start(customer, number)
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("outbox unavailable")
+
+        real_enqueue = service.enqueue
+        monkeypatch.setattr(service, "enqueue", broken)
+        with pytest.raises(RuntimeError):
+            simulate(customer, number)
+
+        # The payment and its announcement are one transaction: neither happened.
+        assert count(ProcessedEvent) == 0
+        assert customer.get(f"{PAYMENTS}/{number}").json()["status"] == "requires_payment"
+
+        monkeypatch.setattr(service, "enqueue", real_enqueue)
         assert simulate(customer, number).json()["payment"]["status"] == "succeeded"
 
     def test_bad_outcome_is_rejected(self, customer, orders):

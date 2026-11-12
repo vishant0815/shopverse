@@ -11,10 +11,11 @@ from .db import Base
 
 class PaymentStatus(str, enum.Enum):
     REQUIRES_PAYMENT = "requires_payment"   # created, waiting for the customer to pay
-    SUCCEEDED = "succeeded"                 # provider confirmed and the order is marked paid
+    SUCCEEDED = "succeeded"                 # provider confirmed; PaymentSucceeded announced to orders
     FAILED = "failed"                       # last attempt failed; the customer can try again
-    REFUND_REQUIRED = "refund_required"     # money taken but the order was cancelled meanwhile
-    AMOUNT_MISMATCH = "amount_mismatch"     # provider amount didn't match; needs a human
+    REFUNDED = "refunded"                   # money given back at the orders saga's request
+    REFUND_REQUIRED = "refund_required"     # a refund is owed but the provider refused it; needs a human
+    AMOUNT_MISMATCH = "amount_mismatch"     # provider took a different amount; orders decides on a refund
 
 
 class Payment(Base):
@@ -31,6 +32,9 @@ class Payment(Base):
     # Stored in the smallest unit (pence), the way payment providers expect it.
     amount_minor: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(3))
+    # What the provider actually took. Only set once the provider has reported success;
+    # refunds return this amount, which can differ from amount_minor on a mismatch.
+    received_amount_minor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[PaymentStatus] = mapped_column(
         Enum(PaymentStatus, name="payment_status", values_callable=lambda e: [m.value for m in e]),
         default=PaymentStatus.REQUIRES_PAYMENT,

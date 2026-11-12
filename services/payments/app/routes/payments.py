@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .. import orders_client, service
+from .. import service
 from ..auth import CurrentUser, current_user
 from ..db import get_db
 from ..models import Payment
@@ -55,10 +55,6 @@ def simulate(order_number: str, body: SimulateRequest,
         raise HTTPException(status_code=404, detail={"code": "not_found", "detail": "Not available."})
     payment = own_payment(db, order_number, user)
     event = FakeProvider.simulated_event(payment.provider_payment_id, payment.amount_minor, payment.currency, body.outcome)
-    try:
-        outcome = service.handle_event(db, event)
-    except orders_client.OrdersUnavailable:
-        raise HTTPException(status_code=503, detail={"code": "orders_unavailable",
-                                                     "detail": "Orders service unavailable. Please try again."})
+    outcome = service.handle_event(db, event)
     db.refresh(payment)
     return SimulateResponse(outcome=outcome, payment=PaymentOut.of(payment))

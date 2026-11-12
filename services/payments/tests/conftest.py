@@ -16,12 +16,13 @@ import pytest  # noqa: E402
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy import create_engine, select, text  # noqa: E402
 
 from app import orders_client  # noqa: E402
 from app.config import get_settings  # noqa: E402
-from app.db import get_engine  # noqa: E402
+from app.db import get_engine, get_sessionmaker  # noqa: E402
 from app.main import app  # noqa: E402
+from app.messaging import OutboxMessage  # noqa: E402
 
 SIGNING_KEY = os.environ["JWT_SIGNING_KEY"]
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,7 +51,7 @@ def database():
 def clean_tables():
     yield
     with get_engine().begin() as conn:
-        conn.execute(text("TRUNCATE payments, processed_events"))
+        conn.execute(text("TRUNCATE payments, processed_events, outbox, processed_messages"))
 
 
 def make_token(user_id=None, role="customer", token_type="access", expires_in=300, key=SIGNING_KEY, algorithm="HS256"):
@@ -93,11 +94,11 @@ def other_customer(client):
 
 
 class FakeOrders:
-    """Stands in for the orders service."""
+    """Stands in for the orders service's read API. Payments no longer calls it to confirm;
+    that goes through the outbox, read back with the `announced` fixture."""
 
     def __init__(self):
         self.orders = {}        # number -> {"owner", "status", "total", "currency"}
-        self.confirmed = []     # (number, payment_id, amount, currency)
         self.down = False
 
     def add(self, owner, total="59.98", status="pending_payment", currency="GBP"):
@@ -115,23 +116,20 @@ class FakeOrders:
         return orders_client.OrderInfo(number=number, status=order["status"], total=order["total"],
                                        currency=order["currency"])
 
-    def confirm_payment(self, number, payment_id, amount, currency):
-        if self.down:
-            raise orders_client.OrdersUnavailable
-        order = self.orders[number]
-        if amount != order["total"]:
-            return orders_client.ConfirmResult(ok=False, code="amount_mismatch")
-        if order["status"] == "cancelled":
-            return orders_client.ConfirmResult(ok=False, code="order_cancelled")
-        self.confirmed.append((number, payment_id, amount, currency))
-        if order["status"] == "pending_payment":
-            order["status"] = "paid"
-        return orders_client.ConfirmResult(ok=True)
-
 
 @pytest.fixture
 def orders(monkeypatch):
     fake = FakeOrders()
     monkeypatch.setattr(orders_client, "get_order", fake.get_order)
-    monkeypatch.setattr(orders_client, "confirm_payment", fake.confirm_payment)
     return fake
+
+
+@pytest.fixture
+def announced():
+    """Returns a function giving the (type, data) of every event queued for the orders saga,
+    in the order they were written. Pass types to keep only those."""
+    def read(*types):
+        with get_sessionmaker()() as db:
+            rows = db.scalars(select(OutboxMessage).order_by(OutboxMessage.seq)).all()
+            return [(row.type, row.payload["data"]) for row in rows if not types or row.type in types]
+    return read

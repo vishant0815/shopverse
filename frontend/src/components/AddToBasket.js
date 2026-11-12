@@ -11,6 +11,8 @@ import { PricePanel } from "./Price";
 import { Button, Notice } from "./ui";
 
 const MAX_QUANTITY = 10;
+// Below this many left, the page says so, to nudge a shopper who is still deciding.
+const LOW_STOCK = 5;
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
@@ -30,17 +32,17 @@ function OptionButton({ selected, disabled, onClick, children }) {
   );
 }
 
-export default function AddToBasket({ variants }) {
+export default function AddToBasket({ variants, stock = {} }) {
   const { user, refreshCart } = useSession();
   const router = useRouter();
   const pathname = usePathname();
 
   const colours = unique(variants.map((v) => v.colour));
   const sizes = unique(variants.map((v) => v.size));
-  const [colour, setColour] = useState(colours[0] || "");
-  const [size, setSize] = useState(
-    variants.find((v) => (v.colour || "") === (colours[0] || ""))?.size || sizes[0] || "",
-  );
+  // Start on an option that can be bought, not on a sold-out one.
+  const opening = variants.find((v) => stock[v.id] !== 0) || variants[0];
+  const [colour, setColour] = useState(opening?.colour || "");
+  const [size, setSize] = useState(opening?.size || "");
   const [quantity, setQuantity] = useState(1);
   const [state, setState] = useState({ busy: false, error: "", added: false });
 
@@ -48,7 +50,13 @@ export default function AddToBasket({ variants }) {
     () => variants.find((v) => (v.colour || "") === colour && (v.size || "") === size),
     [variants, colour, size],
   );
-  const sizeAvailable = (option) => variants.some((v) => (v.colour || "") === colour && v.size === option);
+  // undefined means "not known", which is treated as available; only a real zero is sold out.
+  const left = selected ? stock[selected.id] : undefined;
+  const soldOut = (variant) => stock[variant.id] === 0;
+  const maxQuantity = left === undefined ? MAX_QUANTITY : Math.min(MAX_QUANTITY, left);
+  const sizeAvailable = (option) => variants.some(
+    (v) => (v.colour || "") === colour && v.size === option && !soldOut(v),
+  );
 
   if (!variants.length) {
     return <p className="mt-6 text-ink-soft">This product isn&apos;t available to buy at the moment.</p>;
@@ -61,7 +69,7 @@ export default function AddToBasket({ variants }) {
     }
     setState({ busy: true, error: "", added: false });
     try {
-      await api("/api/v1/cart/items/", { method: "POST", body: { variant_id: selected.id, quantity } });
+      await api("/api/v1/cart/items/", { method: "POST", body: { variant_id: selected.id, quantity: Math.min(quantity, maxQuantity) } });
       await refreshCart();
       setState({ busy: false, error: "", added: true });
     } catch (error) {
@@ -129,12 +137,16 @@ export default function AddToBasket({ variants }) {
             onClick={() => setQuantity((q) => Math.max(1, q - 1))} disabled={quantity <= 1} aria-label="One fewer">−</button>
           <span className="min-w-6 text-center font-bold" aria-live="polite">{quantity}</span>
           <button type="button" className="h-full px-4 text-xl text-ink-soft hover:text-accent disabled:opacity-40"
-            onClick={() => setQuantity((q) => Math.min(MAX_QUANTITY, q + 1))} disabled={quantity >= MAX_QUANTITY} aria-label="One more">+</button>
+            onClick={() => setQuantity((q) => Math.min(maxQuantity, q + 1))} disabled={quantity >= maxQuantity} aria-label="One more">+</button>
         </div>
-        <Button onClick={add} busy={state.busy} disabled={!selected} className="flex-1 py-3.5 text-lg">
-          {state.busy ? "Adding…" : "Add to basket"}
+        <Button onClick={add} busy={state.busy} disabled={!selected || left === 0} className="flex-1 py-3.5 text-lg">
+          {left === 0 ? "Sold out" : state.busy ? "Adding…" : "Add to basket"}
         </Button>
       </div>
+
+      {left !== undefined && left > 0 && left <= LOW_STOCK && (
+        <p className="font-semibold text-power">Only {left} left in this size.</p>
+      )}
 
       {state.added && (
         <Notice tone="success">

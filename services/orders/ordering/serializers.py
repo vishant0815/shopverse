@@ -1,7 +1,7 @@
 from django.conf import settings
 from rest_framework import serializers
 
-from .models import Order, OrderItem, OrderStatusHistory
+from .models import CheckoutSaga, Order, OrderItem, OrderStatusHistory
 
 
 class AddToCartSerializer(serializers.Serializer):
@@ -75,20 +75,53 @@ class OrderDetailSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     history = StatusHistorySerializer(many=True, read_only=True)
     can_cancel = serializers.SerializerMethodField()
+    hold_expires_at = serializers.SerializerMethodField()
+    cancellation = serializers.SerializerMethodField()
+    refund = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             "id", "number", "user_id", "status", "currency", "subtotal", "shipping_fee", "total",
-            "shipping_address", "items", "history", "can_cancel", "created_at", "updated_at",
+            "shipping_address", "items", "history", "can_cancel", "hold_expires_at", "cancellation", "refund",
+            "created_at", "updated_at",
         ]
+
+    @staticmethod
+    def _saga(obj):
+        try:
+            return obj.saga
+        except CheckoutSaga.DoesNotExist:
+            return None
 
     def get_can_cancel(self, obj):
         return obj.status in Order.CUSTOMER_CANCELLABLE
 
+    def get_hold_expires_at(self, obj):
+        """While awaiting payment: when the held items go back on sale."""
+        saga = self._saga(obj)
+        if saga and obj.status == Order.Status.PENDING_PAYMENT and saga.hold_expires_at:
+            return serializers.DateTimeField().to_representation(saga.hold_expires_at)
+        return None
+
+    def get_cancellation(self, obj):
+        saga = self._saga(obj)
+        if obj.status != Order.Status.CANCELLED or not saga or not saga.cancel_code:
+            return None
+        return {"code": saga.cancel_code, "detail": saga.cancel_detail}
+
+    def get_refund(self, obj):
+        saga = self._saga(obj)
+        if not saga or not saga.refund_status:
+            return None
+        return {"status": saga.refund_status, "amount": str(saga.refund_amount) if saga.refund_amount else None}
+
 
 class TransitionSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(choices=Order.Status.choices)
+    # Paid isn't here: only a confirmed payment, through the checkout saga, makes an order paid.
+    status = serializers.ChoiceField(choices=[
+        (s.value, s.label) for s in (Order.Status.SHIPPED, Order.Status.DELIVERED, Order.Status.CANCELLED)
+    ])
     note = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
@@ -109,9 +142,3 @@ class SellerOrderItemSerializer(serializers.ModelSerializer):
             "order_number", "order_status", "ordered_at", "sku", "product_name",
             "colour", "size", "unit_price", "quantity", "line_total",
         ]
-
-
-class PaymentConfirmedSerializer(serializers.Serializer):
-    payment_id = serializers.CharField(max_length=100)
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2)
-    currency = serializers.CharField(max_length=3)

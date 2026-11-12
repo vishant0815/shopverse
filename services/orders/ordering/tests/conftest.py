@@ -114,3 +114,61 @@ def place_order(catalogue, address):
         return client.post("/api/v1/checkout/", {"shipping_address": address}, format="json", **headers)
 
     return _place
+
+
+def saga_message(type_, data, message_id=None):
+    import json
+    import uuid
+
+    return json.dumps({
+        "id": str(message_id or uuid.uuid4()), "type": type_, "source": "test",
+        "occurred_at": "2026-11-12T10:00:00.000Z", "key": data.get("order_number"), "data": data,
+    }).encode()
+
+
+@pytest.fixture
+def deliver():
+    """deliver(type, data) runs a reply through the worker's real path (dedupe and all)."""
+    from messaging.kafka import process
+    from ordering.saga import HANDLERS
+
+    def _deliver(type_, data, topic="saga.replies", message_id=None):
+        return process(HANDLERS, topic, saga_message(type_, data, message_id))
+
+    return _deliver
+
+
+@pytest.fixture
+def hold(deliver):
+    """Inventory answers: the items are held. The order moves on to awaiting payment."""
+
+    def _hold(number):
+        deliver("StockReserved", {"order_number": number, "lines": []})
+
+    return _hold
+
+
+@pytest.fixture
+def pay(deliver, hold):
+    """The payment service reports a successful payment for the full total."""
+    from ordering.models import Order
+
+    def _pay(number, amount=None, payment_id="pay_test"):
+        order = Order.objects.get(number=number)
+        if order.status == Order.Status.RESERVING:
+            hold(number)
+        deliver("PaymentSucceeded", {"order_number": number, "payment_id": payment_id,
+                                     "amount": str(amount or order.total), "currency": order.currency})
+
+    return _pay
+
+
+@pytest.fixture
+def outbox():
+    """outbox() -> the messages written so far, oldest first, as (topic, type, data)."""
+    from messaging.models import OutboxMessage
+
+    def _outbox():
+        return [(m.topic, m.type, m.payload["data"]) for m in OutboxMessage.objects.order_by("seq")]
+
+    return _outbox

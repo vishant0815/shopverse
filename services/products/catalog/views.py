@@ -2,6 +2,7 @@ import uuid
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
@@ -83,7 +84,16 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
         return ProductListSerializer if self.action == "list" else ProductDetailSerializer
 
 
-class SellerProductViewSet(viewsets.ModelViewSet):
+class AtomicRequests:
+    """One database transaction per request, so a variant change and the catalogue event
+    it writes to the outbox (catalog/events.py) are saved together or not at all."""
+
+    @classmethod
+    def as_view(cls, *args, **kwargs):
+        return transaction.atomic(super().as_view(*args, **kwargs))
+
+
+class SellerProductViewSet(AtomicRequests, viewsets.ModelViewSet):
     """Sellers manage their own products here (drafts included); admins see every product."""
 
     permission_classes = [IsSellerOrAdmin, IsProductOwnerOrAdmin]
@@ -120,7 +130,7 @@ class SellerProductViewSet(viewsets.ModelViewSet):
         instance.save(update_fields=["status", "updated_at"])
 
 
-class ProductChildViewSet(mixins.CreateModelMixin, mixins.UpdateModelMixin,
+class ProductChildViewSet(AtomicRequests, mixins.CreateModelMixin, mixins.UpdateModelMixin,
                           mixins.DestroyModelMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
     """Base for /seller/products/{product_id}/variants|images/."""
 

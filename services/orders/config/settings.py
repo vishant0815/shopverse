@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "rest_framework",
+    "messaging",
     "ordering",
 ]
 
@@ -112,3 +113,19 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
 }
+
+# Kafka (see docs/events.md). The worker (`manage.py run_worker`) consumes the replies
+# to the checkout saga, publishes the outbox, and checks for timed-out checkouts.
+MESSAGING = {
+    "SOURCE": "orders",
+    "BOOTSTRAP_SERVERS": env("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+    "GROUP": "orders",
+    "TOPICS": ["inventory.events", "payments.events"],
+    "HANDLERS": "ordering.saga.HANDLERS",
+    "PERIODIC": [(5, "ordering.saga.expire_checkouts")],
+}
+
+# How long items are held for an unpaid order, and how long to wait for inventory to
+# answer before giving up on a checkout.
+PAYMENT_WINDOW_MINUTES = int(env("PAYMENT_WINDOW_MINUTES", "15"))
+STOCK_CHECK_TIMEOUT_SECONDS = int(env("STOCK_CHECK_TIMEOUT_SECONDS", "120"))

@@ -107,7 +107,7 @@ flowchart TB
 | `orders` | Cart, checkout, order lifecycle, saga orchestration | Django + DRF |
 | `payments` | Payment intents, Stripe webhooks, refunds | FastAPI |
 | `search` | Full-text search, filters, autosuggest | FastAPI + Elasticsearch |
-| `inventory` | Stock levels, reservations, flash-sale protection | Django + Redis |
+| `inventory` | Stock levels, reservations, flash-sale protection | FastAPI + SQLAlchemy |
 | `notifications` | Order and payment emails, consuming Kafka events | Python Kafka consumer |
 | `analytics` | Recommendations and seller sales reports | Spark |
 
@@ -306,8 +306,8 @@ Tests will run automatically on every pull request once CI is added (see roadmap
 
 **Phase 2: Scale and marketplace**
 - [x] API gateway with rate limiting
-- [ ] Kafka event bus and saga orchestration
-- [ ] Inventory service with stock reservation
+- [x] Kafka event bus and saga orchestration
+- [x] Inventory service with stock reservation
 - [ ] Elasticsearch search service
 - [ ] Seller accounts, coupons, flash sales, reviews
 - [ ] Notification service

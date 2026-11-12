@@ -3,6 +3,7 @@
 import "server-only";
 
 const PRODUCTS = process.env.PRODUCTS_API_URL || "http://localhost:8002";
+const INVENTORY = process.env.INVENTORY_API_URL || "http://localhost:8005";
 
 export class CatalogueDown extends Error {}
 
@@ -32,6 +33,22 @@ export function getProducts(params = {}) {
 
 export function getProduct(slug) {
   return get(`products/${encodeURIComponent(slug)}/`, { revalidate: 30 });
+}
+
+// How many of each variant can be bought right now: { [variantId]: available }.
+// Stock is a convenience on the product page, not a guarantee (checkout checks again),
+// so if inventory is unreachable the page still works and just doesn't show stock levels.
+export async function getAvailability(variantIds) {
+  if (!variantIds.length) return {};
+  try {
+    const response = await fetch(`${INVENTORY}/api/v1/inventory/availability?variant_ids=${variantIds.join(",")}`,
+      { next: { revalidate: 10 } });
+    if (!response.ok) return {};
+    const { results } = await response.json();
+    return Object.fromEntries(results.map((row) => [row.variant_id, row.available]));
+  } catch {
+    return {};
+  }
 }
 
 export function findCategory(tree, slug) {

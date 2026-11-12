@@ -42,9 +42,9 @@ class TestCustomerOrders:
         assert response.data["history"][-1]["note"] == "Changed my mind"
         assert response.data["can_cancel"] is False
 
-    def test_cannot_cancel_shipped_order(self, customer, admin, place_order):
+    def test_cannot_cancel_shipped_order(self, customer, admin, place_order, pay):
         number = place_order(customer).data["number"]
-        admin_transition(admin, number, "paid")
+        pay(number)
         admin_transition(admin, number, "shipped")
 
         assert customer.post(order_url(number, "cancel/")).status_code == 409
@@ -52,24 +52,27 @@ class TestCustomerOrders:
 
 
 class TestLifecycle:
-    def test_full_happy_path_is_recorded_in_history(self, customer, admin, place_order):
+    def test_full_happy_path_is_recorded_in_history(self, customer, admin, place_order, pay):
         number = place_order(customer).data["number"]
 
-        for status in ["paid", "shipped", "delivered"]:
+        pay(number)
+        for status in ["shipped", "delivered"]:
             assert admin_transition(admin, number, status).status_code == 200
 
         history = customer.get(order_url(number)).data["history"]
-        assert [h["to_status"] for h in history] == ["pending_payment", "paid", "shipped", "delivered"]
+        assert [h["to_status"] for h in history] == ["reserving", "pending_payment", "paid", "shipped", "delivered"]
 
-    @pytest.mark.parametrize("path, bad_next", [
-        ([], "shipped"),                       # can't ship before payment
-        ([], "delivered"),
-        (["paid", "shipped"], "cancelled"),    # can't cancel once shipped
-        (["paid", "shipped", "delivered"], "paid"),
-        (["cancelled"], "paid"),               # cancelled is final
+    @pytest.mark.parametrize("paid, path, bad_next", [
+        (False, [], "shipped"),                         # can't ship before payment
+        (False, [], "delivered"),
+        (True, ["shipped"], "cancelled"),               # can't cancel once shipped
+        (True, ["shipped", "delivered"], "shipped"),
+        (False, ["cancelled"], "shipped"),              # cancelled is final
     ])
-    def test_illegal_transitions_are_rejected(self, customer, admin, place_order, path, bad_next):
+    def test_illegal_transitions_are_rejected(self, customer, admin, place_order, pay, paid, path, bad_next):
         number = place_order(customer).data["number"]
+        if paid:
+            pay(number)
         for status in path:
             admin_transition(admin, number, status)
 
@@ -78,16 +81,26 @@ class TestLifecycle:
         assert response.status_code == 409
         assert "allowed" in response.data
 
+    def test_admins_cannot_mark_orders_paid(self, customer, admin, place_order, hold):
+        """Only a confirmed payment, through the checkout saga, makes an order paid."""
+        number = place_order(customer).data["number"]
+        hold(number)
+
+        response = admin_transition(admin, number, "paid")
+
+        assert response.status_code == 400
+        assert Order.objects.get(number=number).status == "pending_payment"
+
     def test_only_admin_can_transition(self, customer, seller, place_order):
         number = place_order(customer).data["number"]
 
-        assert admin_transition(customer, number, "paid").status_code == 403
-        assert admin_transition(seller, number, "paid").status_code == 403
+        assert admin_transition(customer, number, "cancelled").status_code == 403
+        assert admin_transition(seller, number, "cancelled").status_code == 403
 
-    def test_admin_lists_all_orders_with_status_filter(self, customer, other_customer, admin, place_order):
+    def test_admin_lists_all_orders_with_status_filter(self, customer, other_customer, admin, place_order, pay):
         first = place_order(customer).data["number"]
         place_order(other_customer)
-        admin_transition(admin, first, "paid")
+        pay(first)
 
         assert admin.get("/api/v1/admin/orders/").data["count"] == 2
         paid = admin.get("/api/v1/admin/orders/", {"status": "paid"}).data

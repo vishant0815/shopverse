@@ -1,5 +1,8 @@
 """Turning a cart into an order.
 
+The order is created as "checking stock" and the checkout saga (saga.py) asks the
+inventory service to hold the items; payment opens once they're held.
+
 The product service is called *before* any database lock is taken, so a slow catalogue
 never holds rows locked. Inside the transaction the cart is locked and re-read; if it
 changed while prices were being fetched, checkout stops and asks the client to retry.
@@ -8,7 +11,7 @@ changed while prices were being fetched, checkout stops and asks the client to r
 from django.conf import settings
 from django.db import IntegrityError, transaction
 
-from . import catalog
+from . import catalog, saga
 from .models import Cart, Order, OrderItem, OrderStatusHistory
 from .pricing import price_lines, totals_for
 
@@ -75,7 +78,9 @@ def place_order(user_id, shipping_address, idempotency_key="", expected_total=No
                     actual_total=str(totals["total"]),
                 )
 
+            # The order starts by checking stock; the checkout saga takes it from here.
             order = Order.objects.create(
+                status=Order.Status.RESERVING,
                 user_id=user_id,
                 currency=settings.CURRENCY,
                 shipping_address=shipping_address,
@@ -104,6 +109,8 @@ def place_order(user_id, shipping_address, idempotency_key="", expected_total=No
                 order=order, from_status="", to_status=order.status, changed_by=user_id, note="Order placed"
             )
             cart.items.all().delete()
+            # Same transaction: the stock request is sent if and only if the order exists.
+            saga.start(order)
     except IntegrityError:
         # Two requests with the same idempotency key raced each other; the other one won.
         if idempotency_key:

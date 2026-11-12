@@ -114,6 +114,8 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 
 **Trade-off:** There's a short delay between the customer paying and the order showing as paid. The next step is to publish a `payment.succeeded` event to Kafka instead of calling the orders service directly, which removes the direct dependency between the two services.
 
+**Status:** Partly superseded by 018. The webhook still decides what happened, but it no longer calls the orders service: the outcome and the event for orders are written together, and a database failure is what makes Stripe retry.
+
 ---
 
 ## 013: The storefront as the browser's only entry point
@@ -172,4 +174,43 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 - **Refresh has its own limit.** Token refresh happens on every page load, so sharing the sign-in limit would sign people out for browsing quickly. The users service had exactly that problem, and the browser tests hit it; refresh now has its own limit there too.
 
 **Trade-off:** Failing open means a Redis outage removes rate limiting until Redis is back. The alternative, failing closed, would turn a cache outage into a full shop outage. The users service keeps its own sign-in limit as a second line, so brute-forcing passwords stays slowed even then.
+
+---
+
+## 018: Kafka between services, with a transactional outbox
+
+**Decision:** Services tell each other about changes as events on Kafka. A service never publishes straight from a request: the event is written to an `outbox` table in the same database transaction as the change, and a relay in the service's worker sends unsent rows in order and marks them sent. Consumers record every message id they handle in `processed_messages`, in the same transaction as their own changes, and commit the Kafka offset only after that.
+
+**Why:**
+- **No lost or phantom messages.** A change and its event commit together or not at all. Publishing after commit would lose the event if the process died in between; publishing before would announce a change that never happened.
+- **At-least-once delivery, exactly-once effects.** Kafka redelivers after a crash, and the relay can send a message twice. Recording message ids makes the second handling a no-op, so a duplicate refund or a second stock reservation can't happen.
+- **Order where it matters.** Rows are sent by a sequence number, not a timestamp: every row in one transaction shares the same `now()`. Messages about one order are written under that order's lock, so their order is kept.
+
+**Trade-off:** Each service runs one more process (its worker), and messages reach other services after a short delay rather than immediately. The outbox table needs cleaning up once rows are sent. Full detail, with the topics and message shapes, is in [docs/events.md](events.md).
+
+---
+
+## 019: Checkout as a saga, with orders as the orchestrator
+
+**Decision:** Placing an order is a saga run by the orders service. It asks inventory to reserve stock, waits for the reply, leaves the customer 15 minutes to pay, and asks inventory to commit the stock once payment is confirmed. Each step has an undo: releasing stock, or refunding the money. The orders service keeps the saga's state next to the order, and a periodic sweep cancels checkouts that run out of time.
+
+**Why:**
+- **No distributed transaction.** Orders, inventory and payments each have their own database, so there's no single commit that covers all three. A saga is a sequence of local steps that can each be undone.
+- **One place to look.** Only orders decides what a checkout's outcome is. Inventory and payments answer commands and don't call each other.
+- **Money that lands for a dead order goes back.** If a payment arrives after its order was cancelled, the saga asks for a refund. An amount that doesn't match the order total is refunded too, rather than marking the order paid.
+
+**Trade-off:** The customer sees "Checking stock" for a moment instead of an instant result, and the order page polls until the saga settles. A saga that gets stuck (say, inventory is down for longer than two minutes) is cancelled by the timeout rather than retried forever, which is the right failure for a shop but means a customer may need to try again.
+
+---
+
+## 020: Stock is held at checkout and committed only when paid
+
+**Decision:** Inventory keeps `on_hand` and `reserved` for each option, with `available = on_hand − reserved`. A reservation takes units from `available` when the order starts, and turns into a sale (reducing `on_hand`) when payment is confirmed. Reservations lock their rows in variant-id order, and a database check keeps `reserved` at or below `on_hand`.
+
+**Why:**
+- **Holding is cheap to undo.** An abandoned checkout only moves a counter, so nothing is lost when a customer walks away.
+- **Two shoppers can't both get the last unit.** The lock on the rows serialises reservations for the same option, and locking in a fixed order stops two multi-item checkouts from deadlocking.
+- **A cancelled sale goes back on the shelf.** Releasing a committed reservation adds the units back to `on_hand`, so cancelling a paid order undoes the sale completely.
+
+**Trade-off:** A reservation holds stock for up to 15 minutes even if the customer never pays, so a popular item can look sold out while others are waiting. The window is configurable (`PAYMENT_WINDOW_MINUTES`); shorter windows free stock sooner but give customers less time to pay.
 
