@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     orders_service_url: str = "http://localhost:8003"
     orders_service_timeout: float = 5.0
 
+    # Payment events go to the orders saga through Kafka (see docs/events.md).
+    kafka_bootstrap_servers: str = "localhost:9092"
+
     @property
     def database_url(self) -> str:
         return (

@@ -12,7 +12,7 @@ const STATUSES = [
   ["archived", "Archived"],
 ];
 
-const blankVariant = () => ({ key: crypto.randomUUID(), sku: "", colour: "", size: "", price: "", compare_at_price: "" });
+const blankVariant = () => ({ key: crypto.randomUUID(), sku: "", colour: "", size: "", price: "", compare_at_price: "", on_hand: "", reserved: 0 });
 const blankImage = () => ({ key: crypto.randomUUID(), url: "", alt_text: "" });
 
 // Categories come back flat, with each child naming its parent; show them as "Fashion › Footwear".
@@ -37,6 +37,57 @@ function changed(original, current) {
   const a = variantPayload({ ...original, compare_at_price: original.compare_at_price ?? "" });
   const b = variantPayload(current);
   return Object.keys(a).some((key) => String(a[key] ?? "") !== String(b[key] ?? ""));
+}
+
+// Stock levels for these variants: { [variantId]: { on_hand, reserved } }. Inventory being down
+// shouldn't stop the seller saving options and photos, so this answers {} rather than failing.
+async function loadStock(ids) {
+  if (!ids.length) return {};
+  try {
+    const { results } = await api(`/api/v1/inventory/stock?variant_ids=${ids.join(",")}`);
+    return Object.fromEntries(results.map((row) => [row.variant_id, row]));
+  } catch {
+    return {};
+  }
+}
+
+function withStock(rows, stock) {
+  return rows.map((v) => ({
+    ...v,
+    on_hand: stock[v.id] ? String(stock[v.id].on_hand) : "",
+    reserved: stock[v.id]?.reserved ?? 0,
+  }));
+}
+
+// A brand-new option reaches inventory a moment after it's saved (catalogue events), so
+// the service answers "not_ready" until then. Keep asking for a few seconds.
+async function setStock(variantId, onHand) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await api(`/api/v1/inventory/stock/${variantId}`, { method: "PUT", body: { on_hand: onHand } });
+    } catch (err) {
+      if (err.status === 404 && err.data?.code === "not_ready" && attempt < 10) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+// Saves the "In stock" numbers that changed. Returns the options that couldn't be saved.
+async function syncStock(targets, baseline) {
+  const failed = [];
+  for (const { id, row } of targets) {
+    const value = row.on_hand.trim();
+    if (value === "" || value === baseline(id)) continue;
+    try {
+      await setStock(id, Number(value));
+    } catch (err) {
+      failed.push(`${row.sku.trim() || "an option"} (${describe(err)})`);
+    }
+  }
+  return failed;
 }
 
 // The API reports errors as {field: [messages]}, sometimes nested; flatten to one sentence.
@@ -83,9 +134,13 @@ export default function ProductEditor({ productId, listHref }) {
         const active = product.variants
           .filter((v) => v.is_active)
           .map((v) => ({ ...v, key: v.id, price: String(v.price), compare_at_price: v.compare_at_price ? String(v.compare_at_price) : "" }));
-        setVariants(active.length ? active : [blankVariant()]);
+        const rows = withStock(active, await loadStock(active.map((v) => v.id)));
+        setVariants(rows.length ? rows : [blankVariant()]);
         setImages(product.images.map((i) => ({ ...i, key: String(i.id) })));
-        setOriginal({ variants: active, images: product.images });
+        setOriginal({ variants: rows, images: product.images });
+        if (new URLSearchParams(window.location.search).get("stock") === "later") {
+          setState((s) => ({ ...s, error: "Some stock numbers weren't saved when the product was created. Check the “In stock” column and save again." }));
+        }
         setLoaded(true);
       } catch (err) {
         setState((s) => ({ ...s, error: err.status === 404 ? "This product doesn't exist, or it isn't yours." : err.message }));
@@ -107,6 +162,9 @@ export default function ProductEditor({ productId, listHref }) {
       if (!(Number(v.price) > 0)) return `Option ${index + 1}: the price must be more than £0.`;
       if (v.compare_at_price !== "" && Number(v.compare_at_price) < Number(v.price)) {
         return `Option ${index + 1}: the “was” price can't be lower than the price.`;
+      }
+      if (v.on_hand.trim() !== "" && !/^\d+$/.test(v.on_hand.trim())) {
+        return `Option ${index + 1}: in stock must be a whole number.`;
       }
     }
     if (form.status === "active" && filled.length === 0) return "Add at least one option with a price before publishing.";
@@ -136,7 +194,10 @@ export default function ProductEditor({ productId, listHref }) {
             images: filledImages.map((i, position) => ({ url: i.url.trim(), alt_text: i.alt_text.trim(), position })),
           },
         });
-        router.replace(`${listHref}/${created.id}?created=1`);
+        const targets = filledVariants.map((row) => ({ row, id: created.variants?.find((c) => c.sku === row.sku.trim())?.id }));
+        const failed = await syncStock(targets.filter((t) => t.id), () => "");
+        const missed = targets.some((t) => !t.id && t.row.on_hand.trim() !== "");
+        router.replace(`${listHref}/${created.id}?created=1${failed.length || missed ? "&stock=later" : ""}`);
         return;
       }
 
@@ -147,11 +208,15 @@ export default function ProductEditor({ productId, listHref }) {
       for (const old of original.variants) {
         if (!keptIds.has(old.id)) await api(`${base}/variants/${old.id}/`, { method: "DELETE" });
       }
+      const stockTargets = [];
       for (const v of filledVariants) {
-        if (!v.id) await api(`${base}/variants/`, { method: "POST", body: variantPayload(v) });
-        else {
+        if (!v.id) {
+          const created = await api(`${base}/variants/`, { method: "POST", body: variantPayload(v) });
+          stockTargets.push({ id: created.id, row: v });
+        } else {
           const before = original.variants.find((o) => o.id === v.id);
           if (before && changed(before, v)) await api(`${base}/variants/${v.id}/`, { method: "PATCH", body: variantPayload(v) });
+          stockTargets.push({ id: v.id, row: v });
         }
       }
       const keptImages = new Set(filledImages.filter((i) => i.id).map((i) => i.id));
@@ -161,16 +226,22 @@ export default function ProductEditor({ productId, listHref }) {
       for (const [position, image] of filledImages.entries()) {
         if (!image.id) await api(`${base}/images/`, { method: "POST", body: { url: image.url.trim(), alt_text: image.alt_text.trim(), position } });
       }
+      const failed = await syncStock(stockTargets, (id) => original.variants.find((o) => o.id === id)?.on_hand ?? "");
       const updated = await api(`${base}/`, { method: "PATCH", body: { ...core, status: form.status } });
 
       const active = updated.variants
         .filter((v) => v.is_active)
         .map((v) => ({ ...v, key: v.id, price: String(v.price), compare_at_price: v.compare_at_price ? String(v.compare_at_price) : "" }));
-      setVariants(active.length ? active : [blankVariant()]);
+      const rows = withStock(active, await loadStock(active.map((v) => v.id)));
+      setVariants(rows.length ? rows : [blankVariant()]);
       setImages(updated.images.map((i) => ({ ...i, key: String(i.id) })));
-      setOriginal({ variants: active, images: updated.images });
+      setOriginal({ variants: rows, images: updated.images });
       setForm((f) => ({ ...f, status: updated.status }));
-      setState({ busy: false, error: "", saved: true });
+      setState({
+        busy: false,
+        error: failed.length ? `Stock wasn't saved for ${failed.join(", ")}. Everything else is saved.` : "",
+        saved: failed.length === 0,
+      });
     } catch (err) {
       setState({ busy: false, error: describe(err), saved: false });
     }
@@ -206,13 +277,14 @@ export default function ProductEditor({ productId, listHref }) {
           <p className="mb-4 text-sm text-ink-soft">One row per colour and size you sell. Fill in “Was” to show a discount.</p>
           <div className="space-y-3">
             {variants.map((v, index) => (
-              <div key={v.key} className="grid grid-cols-2 items-end gap-2.5 sm:grid-cols-[1.8fr_1fr_.7fr_.9fr_.9fr_auto]">
+              <div key={v.key} className="grid grid-cols-2 items-end gap-2.5 sm:grid-cols-[1.8fr_1fr_.7fr_.9fr_.9fr_.8fr_auto]">
                 {[
                   ["sku", "Item code", "e.g. NOVA-X1-BLK"],
                   ["colour", "Colour", "Black"],
                   ["size", "Size", "M"],
                   ["price", "Price (£)", "29.99"],
                   ["compare_at_price", "Was (£)", "optional"],
+                  ["on_hand", "In stock", "0"],
                 ].map(([field, label, placeholder]) => (
                   <label key={field} className={field === "sku" ? "col-span-2 sm:col-span-1" : ""}>
                     <span className={`mb-1 block text-xs text-ink-soft ${index > 0 ? "sm:sr-only" : ""}`}>{label}</span>
@@ -221,7 +293,7 @@ export default function ProductEditor({ productId, listHref }) {
                       value={v[field]}
                       onChange={(e) => setVariant(v.key, field, e.target.value)}
                       placeholder={placeholder}
-                      inputMode={field.includes("price") ? "decimal" : undefined}
+                      inputMode={field.includes("price") ? "decimal" : field === "on_hand" ? "numeric" : undefined}
                       className={`field px-3 py-2 text-sm ${field === "compare_at_price" && v.compare_at_price ? "text-power" : ""}`}
                     />
                   </label>

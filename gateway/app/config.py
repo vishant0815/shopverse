@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     products_service_url: str = "http://localhost:8002"
     orders_service_url: str = "http://localhost:8003"
     payments_service_url: str = "http://localhost:8004"
+    inventory_service_url: str = "http://localhost:8005"
     # Everything that isn't /api/... (pages, scripts, images) goes to the storefront.
     storefront_url: str = "http://localhost:3000"
 
@@ -58,6 +59,7 @@ class Settings(BaseSettings):
             "products": self.products_service_url.rstrip("/"),
             "orders": self.orders_service_url.rstrip("/"),
             "payments": self.payments_service_url.rstrip("/"),
+            "inventory": self.inventory_service_url.rstrip("/"),
             "storefront": self.storefront_url.rstrip("/"),
         }
 

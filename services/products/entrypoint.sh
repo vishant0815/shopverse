@@ -8,6 +8,8 @@ if [ "$1" = "gunicorn" ]; then
   if [ "$SEED_DEMO_DATA" = "true" ]; then
     python manage.py seed_catalog
   fi
+  # Announce variants that existed before catalogue events did (once).
+  python manage.py publish_catalog --once
 fi
 
 exec "$@"

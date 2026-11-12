@@ -16,6 +16,7 @@ export function dateTime(value) {
 }
 
 const STATUS_LABELS = {
+  reserving: "Checking stock",
   pending_payment: "Awaiting payment",
   paid: "Paid",
   shipped: "Shipped",
@@ -25,6 +26,13 @@ const STATUS_LABELS = {
 
 export function orderStatus(status) {
   return STATUS_LABELS[status] || status;
+}
+
+// 754 → "12:34". Used for the time left to pay before items go back on sale.
+export function countdown(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
 }
 
 export function variantLabel(variant) {

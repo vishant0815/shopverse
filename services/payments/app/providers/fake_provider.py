@@ -20,6 +20,10 @@ class FakeProvider(PaymentProvider):
     def parse_webhook(self, payload, signature):
         raise ValueError("The fake provider has no webhooks; use the simulate endpoint.")
 
+    def refund(self, *, provider_payment_id, amount_minor, idempotency_key):
+        # Deterministic from the key, so a repeated refund returns the same id, as Stripe does.
+        return f"fake_re_{idempotency_key}"
+
     @staticmethod
     def simulated_event(provider_payment_id, amount_minor, currency, outcome):
         return PaymentEvent(

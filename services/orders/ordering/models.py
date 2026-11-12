@@ -43,6 +43,7 @@ def generate_order_number():
 
 class Order(models.Model):
     class Status(models.TextChoices):
+        RESERVING = "reserving", "Checking stock"
         PENDING_PAYMENT = "pending_payment", "Pending payment"
         PAID = "paid", "Paid"
         SHIPPED = "shipped", "Shipped"
@@ -51,13 +52,14 @@ class Order(models.Model):
 
     # The only moves an order can make. Anything else is rejected.
     TRANSITIONS = {
+        Status.RESERVING: {Status.PENDING_PAYMENT, Status.CANCELLED},
         Status.PENDING_PAYMENT: {Status.PAID, Status.CANCELLED},
         Status.PAID: {Status.SHIPPED, Status.CANCELLED},
         Status.SHIPPED: {Status.DELIVERED},
         Status.DELIVERED: set(),
         Status.CANCELLED: set(),
     }
-    CUSTOMER_CANCELLABLE = {Status.PENDING_PAYMENT, Status.PAID}
+    CUSTOMER_CANCELLABLE = {Status.RESERVING, Status.PENDING_PAYMENT, Status.PAID}
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     number = models.CharField(max_length=20, unique=True, default=generate_order_number, editable=False)
@@ -106,6 +108,12 @@ class Order(models.Model):
             order=self, from_status=old_status, to_status=new_status, changed_by=changed_by, note=note
         )
 
+    def add_note(self, note, changed_by=None):
+        """Record something that happened without a status change (a refund, say)."""
+        OrderStatusHistory.objects.create(
+            order=self, from_status=self.status, to_status=self.status, changed_by=changed_by, note=note
+        )
+
 
 class OrderItem(models.Model):
     """A snapshot of what was bought. Names and prices are copied, not referenced,
@@ -149,3 +157,53 @@ class OrderStatusHistory(models.Model):
     class Meta:
         ordering = ["created_at", "id"]
         verbose_name_plural = "order status history"
+
+
+class CheckoutSaga(models.Model):
+    """The state of an order's checkout saga (see ordering/saga.py and docs/events.md).
+
+    Orders is the orchestrator: it asks inventory to hold the items, waits for the
+    payment, then either confirms the sale or undoes whatever was done so far.
+    """
+
+    class State(models.TextChoices):
+        RESERVING = "reserving", "Waiting for inventory to hold the items"
+        AWAITING_PAYMENT = "awaiting_payment", "Items held, waiting for payment"
+        COMPLETED = "completed", "Paid and the sale confirmed"
+        FAILED = "failed", "Stock couldn't be held"
+        CANCELLED = "cancelled", "Cancelled and compensated"
+
+    class CancelCode(models.TextChoices):
+        SOLD_OUT = "sold_out"
+        NOT_PAID_IN_TIME = "not_paid_in_time"
+        STOCK_CHECK_TIMEOUT = "stock_check_timeout"
+        CUSTOMER = "customer"
+        ADMIN = "admin"
+
+    class RefundStatus(models.TextChoices):
+        REQUESTED = "requested"
+        REFUNDED = "refunded"
+        FAILED = "failed"
+
+    order = models.OneToOneField(Order, on_delete=models.CASCADE, primary_key=True, related_name="saga")
+    state = models.CharField(max_length=20, choices=State.choices, default=State.RESERVING)
+    hold_expires_at = models.DateTimeField(null=True, blank=True)
+    cancel_code = models.CharField(max_length=30, choices=CancelCode.choices, blank=True)
+    # What the customer is told, e.g. which item sold out.
+    cancel_detail = models.CharField(max_length=500, blank=True)
+    payment_id = models.CharField(max_length=100, blank=True)
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    refund_status = models.CharField(max_length=20, choices=RefundStatus.choices, blank=True)
+    refund_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            # The timeout sweep looks for holds that ran out and checks that hung.
+            models.Index(fields=["state", "hold_expires_at"]),
+            models.Index(fields=["state", "started_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.order_id}: {self.state}"

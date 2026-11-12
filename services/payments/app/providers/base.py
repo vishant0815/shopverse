@@ -41,3 +41,9 @@ class PaymentProvider(ABC):
     def parse_webhook(self, payload: bytes, signature: str) -> PaymentEvent:
         """Verify the webhook really came from the provider and parse it.
         Raises ValueError if the signature is missing or wrong."""
+
+    @abstractmethod
+    def refund(self, *, provider_payment_id: str, amount_minor: int, idempotency_key: str) -> str:
+        """Return money to the customer and give back the provider's refund id.
+        The idempotency key makes a repeated call for the same refund a no-op at the provider.
+        Raises ProviderError if the provider refuses or can't be reached."""

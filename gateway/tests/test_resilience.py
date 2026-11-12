@@ -130,10 +130,10 @@ def test_readiness_checks_redis_and_every_service(gateway, services):
 
     assert response.status_code == 200
     assert response.json()["checks"] == {"redis": "ok", "users": "ok", "products": "ok", "orders": "ok",
-                                         "payments": "ok", "storefront": "ok"}
+                                         "payments": "ok", "inventory": "ok", "storefront": "ok"}
     asked = {(r.url.host, r.url.path) for r in services.received}
     assert asked == {("users", "/health/"), ("products", "/health/"), ("orders", "/health/"),
-                     ("payments", "/health"), ("storefront", "/favicon.svg")}
+                     ("payments", "/health"), ("inventory", "/health"), ("storefront", "/favicon.svg")}
 
 
 def test_readiness_reports_a_service_that_is_down(gateway, services):

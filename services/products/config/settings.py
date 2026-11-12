@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "rest_framework",
     "django_filters",
+    "messaging",
     "catalog",
 ]
 
@@ -116,4 +117,13 @@ LOGGING = {
     "disable_existing_loggers": False,
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
+}
+
+# Kafka (see docs/events.md). This service only publishes: the worker
+# (`manage.py run_worker`) sends catalogue events from the outbox.
+MESSAGING = {
+    "SOURCE": "products",
+    "BOOTSTRAP_SERVERS": env("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+    "GROUP": "products",
+    "TOPICS": [],
 }

@@ -2,6 +2,7 @@ from django.db import transaction
 from django.utils.text import slugify
 from rest_framework import serializers
 
+from . import events
 from .models import Category, Product, ProductImage, ProductVariant
 
 
@@ -165,7 +166,9 @@ class ProductWriteSerializer(serializers.ModelSerializer):
         variants = validated_data.pop("variants", [])
         images = validated_data.pop("images", [])
         product = Product.objects.create(**validated_data)
-        ProductVariant.objects.bulk_create([ProductVariant(product=product, **v) for v in variants])
+        created = ProductVariant.objects.bulk_create([ProductVariant(product=product, **v) for v in variants])
+        for variant in created:  # bulk_create skips post_save, so announce these by hand
+            events.variant_upserted(variant)
         ProductImage.objects.bulk_create([ProductImage(product=product, **i) for i in images])
         return product
 

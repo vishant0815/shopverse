@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
-from .. import orders_client, service
+from .. import service
 from ..db import get_db
 from ..providers import get_provider
 from ..providers.fake_provider import FakeProvider
@@ -19,7 +19,9 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(defaul
                          db: Session = Depends(get_db)):
     """Receives events from Stripe. No login: the signature is what proves it came from Stripe.
 
-    Responses tell Stripe what to do next: 2xx = done, 5xx = retry later.
+    Responses tell Stripe what to do next: 2xx = done, 5xx = retry later. The orders
+    service is not called here: its update goes out through the outbox, so Stripe is
+    never kept waiting on another service.
     """
     provider = get_provider()
     if isinstance(provider, FakeProvider):
@@ -31,11 +33,9 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(defaul
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid signature.")
 
-    try:
-        # Database and HTTP work is blocking, so keep it off the event loop.
-        outcome = await run_in_threadpool(service.handle_event, db, event)
-    except orders_client.OrdersUnavailable:
-        raise HTTPException(status_code=503, detail="Orders service unavailable; please retry.")
+    # Database work is blocking, so keep it off the event loop. A database failure is a 500,
+    # which Stripe treats as "try again later", the same as before.
+    outcome = await run_in_threadpool(service.handle_event, db, event)
 
     logger.info("Stripe event %s (%s): %s", event.event_id, event.type, outcome)
     return {"received": True, "outcome": outcome}

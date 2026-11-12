@@ -32,6 +32,17 @@ class StripeProvider(PaymentProvider):
             raise ProviderError(str(exc)) from exc
         return CreatedPayment(provider_payment_id=intent.id, client_secret=intent.client_secret)
 
+    def refund(self, *, provider_payment_id, amount_minor, idempotency_key):
+        try:
+            refund = self.client.v1.refunds.create(
+                params={"payment_intent": provider_payment_id, "amount": amount_minor},
+                # Stripe's own idempotency: a retried refund can't return the money twice.
+                options={"idempotency_key": idempotency_key},
+            )
+        except stripe.StripeError as exc:
+            raise ProviderError(str(exc)) from exc
+        return refund.id
+
     def parse_webhook(self, payload, signature):
         try:
             # Checks the HMAC signature and rejects events older than 5 minutes (replay protection).

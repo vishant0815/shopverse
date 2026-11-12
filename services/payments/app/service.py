@@ -2,16 +2,23 @@
 
 import logging
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import orders_client
+from .messaging import enqueue
 from .models import Payment, PaymentStatus, ProcessedEvent, to_minor_units
-from .providers import PaymentEvent, PaymentProvider
+from .providers import PaymentEvent, PaymentProvider, ProviderError
 
 logger = logging.getLogger(__name__)
+
+# Payment events for the orders saga: a topic per service, a key per order (docs/events.md).
+EVENTS = "payments.events"
+# A payment can only be refunded once it has taken money, and only while we still hold it.
+REFUNDABLE = {PaymentStatus.SUCCEEDED, PaymentStatus.AMOUNT_MISMATCH, PaymentStatus.REFUND_REQUIRED}
 
 
 class PaymentError(Exception):
@@ -73,12 +80,23 @@ def start_payment(db: Session, provider: PaymentProvider, *, order_number: str, 
     return payment, True
 
 
-def handle_event(db: Session, event: PaymentEvent) -> str:
-    """Apply a provider event. Returns a short outcome for logging and the HTTP response.
+def _money(amount_minor: int) -> Decimal:
+    return (Decimal(amount_minor) / 100).quantize(Decimal("0.01"))
 
-    Everything happens in one transaction: if the orders service can't be reached, the
-    transaction rolls back (event not marked processed) and OrdersUnavailable propagates,
-    so the webhook answers 503 and the provider retries later.
+
+def _announce(db: Session, type_: str, payment: Payment, **data) -> None:
+    """Queue an event for the orders saga. It is sent only when this transaction commits."""
+    enqueue(db, EVENTS, type_, payment.order_number,
+            {"order_number": payment.order_number, "payment_id": str(payment.id), **data})
+
+
+def handle_event(db: Session, event: PaymentEvent) -> str:
+    """Apply a provider event. Returns a short outcome for the logs and the HTTP response.
+
+    The payment's new state and the event for the orders saga are written in one
+    transaction, so the saga hears about a payment exactly when the record changes. Nothing
+    here calls another service: if the database fails, the transaction rolls back and the
+    provider's retry runs the event again.
     """
     if event.type == "other":
         return "ignored"
@@ -102,6 +120,7 @@ def handle_event(db: Session, event: PaymentEvent) -> str:
         if payment.status == PaymentStatus.REQUIRES_PAYMENT:
             payment.status = PaymentStatus.FAILED
             payment.last_error = event.error_message
+            _announce(db, "PaymentFailed", payment, error=event.error_message)
         db.commit()
         return "failed"
 
@@ -109,27 +128,63 @@ def handle_event(db: Session, event: PaymentEvent) -> str:
     if payment.status == PaymentStatus.SUCCEEDED:
         db.commit()
         return "already_succeeded"
+
+    payment.received_amount_minor = event.amount_minor
     if event.amount_minor != payment.amount_minor or event.currency.upper() != payment.currency.upper():
         payment.status = PaymentStatus.AMOUNT_MISMATCH
         payment.last_error = f"Provider reported {event.amount_minor} {event.currency}"
-        db.commit()
         logger.error("Amount mismatch on payment %s", payment.id)
-        return "amount_mismatch"
-
-    try:
-        result = orders_client.confirm_payment(payment.order_number, str(payment.id), payment.amount, payment.currency)
-    except orders_client.OrdersUnavailable:
-        db.rollback()
-        raise
-
-    if result.ok:
+    else:
         payment.status = PaymentStatus.SUCCEEDED
         payment.last_error = ""
-    elif result.code == "order_cancelled":
-        payment.status = PaymentStatus.REFUND_REQUIRED
-        payment.last_error = "Order was cancelled before the payment completed."
-    else:
-        payment.status = PaymentStatus.AMOUNT_MISMATCH
-        payment.last_error = f"Orders service rejected the payment: {result.code}"
+
+    # Announce what was actually taken. The saga compares it with the order total and asks
+    # for a refund itself if they differ, so a mismatch never marks an order paid.
+    _announce(db, "PaymentSucceeded", payment,
+              amount=str(_money(event.amount_minor)), currency=event.currency.upper())
     db.commit()
     return payment.status.value
+
+
+def refund_order(db: Session, provider: PaymentProvider, *, order_number: str, reason: str) -> None:
+    """Give back the money taken for an order, at the orders saga's request. The caller commits.
+
+    Refunds exactly once: a repeated command finds the payment already refunded and only
+    announces that again. The provider's idempotency key covers the case where the refund
+    went through but this transaction failed before it was recorded.
+    """
+    payment = db.scalar(select(Payment).where(Payment.order_number == order_number).with_for_update())
+    if payment is None:
+        enqueue(db, EVENTS, "RefundFailed", order_number,
+                {"order_number": order_number, "reason": "no_payment", "requested_reason": reason})
+        return
+
+    if payment.status == PaymentStatus.REFUNDED:
+        _announce(db, "PaymentRefunded", payment, amount=str(_money(_taken(payment))),
+                  currency=payment.currency, reason=reason)
+        return
+
+    if payment.status not in REFUNDABLE:
+        _announce(db, "RefundFailed", payment, reason="not_paid", requested_reason=reason)
+        return
+
+    amount_minor = _taken(payment)
+    try:
+        provider.refund(provider_payment_id=payment.provider_payment_id, amount_minor=amount_minor,
+                        idempotency_key=f"refund-{payment.id}")
+    except ProviderError as exc:
+        logger.error("Refund for %s was refused: %s", order_number, exc)
+        payment.status = PaymentStatus.REFUND_REQUIRED
+        payment.last_error = f"Refund failed: {exc}"[:255]
+        _announce(db, "RefundFailed", payment, reason="provider_error", requested_reason=reason)
+        return
+
+    payment.status = PaymentStatus.REFUNDED
+    payment.last_error = ""
+    _announce(db, "PaymentRefunded", payment, amount=str(_money(amount_minor)),
+              currency=payment.currency, reason=reason)
+
+
+def _taken(payment: Payment) -> int:
+    """The amount the provider took, which is what we give back."""
+    return payment.received_amount_minor or payment.amount_minor

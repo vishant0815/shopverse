@@ -27,14 +27,14 @@ def test_checkout_creates_order_with_snapshot_and_clears_cart(customer, catalogu
     assert response.status_code == 201
     data = response.data
     assert data["number"].startswith("SV-")
-    assert data["status"] == "pending_payment"
+    assert data["status"] == "reserving"  # the checkout saga asks inventory first
     assert data["subtotal"] == "39.98"
     assert data["shipping_fee"] == "4.99"
     assert data["total"] == "44.97"
     assert data["shipping_address"]["postcode"] == "E1 6AN"
     assert data["items"][0]["product_name"] == "Linen Dress"
     assert data["items"][0]["unit_price"] == "19.99"
-    assert data["history"][0]["to_status"] == "pending_payment"
+    assert data["history"][0]["to_status"] == "reserving"
     assert Cart.objects.get(user_id=customer.user_id).items.count() == 0
 
 

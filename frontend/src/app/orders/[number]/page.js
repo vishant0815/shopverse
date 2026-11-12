@@ -10,15 +10,34 @@ import RequireSignIn from "@/components/RequireSignIn";
 import StatusBadge from "@/components/StatusBadge";
 import { Button, Notice } from "@/components/ui";
 import { api } from "@/lib/api";
-import { dateTime, money, orderStatus, variantLabel } from "@/lib/format";
+import { countdown, dateTime, money, orderStatus, variantLabel } from "@/lib/format";
 
 const JOURNEY = ["pending_payment", "paid", "shipped", "delivered"];
+
+// Ticks once a second while `active`, so the hold countdown stays current.
+function useNow(active) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+  return now;
+}
+
+function refundText(refund) {
+  const amount = refund.amount ? money(refund.amount) : "your payment";
+  if (refund.status === "refunded") return `We've refunded ${amount} to your card.`;
+  if (refund.status === "failed") return "The refund needs a closer look, and our team has been told. You don't need to do anything.";
+  return `We're refunding ${amount} to your card. This can take a few minutes.`;
+}
 
 function OrderDetail() {
   const { number } = useParams();
   const [order, setOrder] = useState(null);
   const [error, setError] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const now = useNow(Boolean(order?.hold_expires_at));
 
   const load = useCallback(async () => {
     try {
@@ -31,6 +50,16 @@ function OrderDetail() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Stock is still being checked: poll quickly. Items held for payment: poll slowly, so a
+  // hold that runs out shows up as cancelled without a reload.
+  const settling = order?.status === "reserving";
+  const holding = Boolean(order?.hold_expires_at);
+  useEffect(() => {
+    if (!settling && !holding) return undefined;
+    const timer = setInterval(load, settling ? 1500 : 5000);
+    return () => clearInterval(timer);
+  }, [settling, holding, load]);
 
   async function cancel() {
     if (!window.confirm("Cancel this order?")) return;
@@ -53,8 +82,11 @@ function OrderDetail() {
     );
   }
 
-  const reached = order.status === "cancelled" ? -1 : JOURNEY.indexOf(order.status);
+  const reached = order.status === "cancelled" || order.status === "reserving" ? -1 : JOURNEY.indexOf(order.status);
   const address = order.shipping_address;
+  const secondsLeft = order.hold_expires_at
+    ? Math.max(0, Math.floor((new Date(order.hold_expires_at).getTime() - now) / 1000))
+    : null;
 
   return (
     <div className="space-y-10">
@@ -67,7 +99,24 @@ function OrderDetail() {
         <StatusBadge status={order.status} />
       </div>
 
-      {order.status !== "cancelled" ? (
+      {order.status === "reserving" && (
+        <Notice tone="info">
+          <span className="flex items-center gap-3">
+            <span aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+            Checking stock for your items. This usually takes a few seconds.
+          </span>
+        </Notice>
+      )}
+
+      {order.status === "pending_payment" && secondsLeft !== null && (
+        <Notice tone="info">
+          {secondsLeft > 0
+            ? `Your items are held for you until ${dateTime(order.hold_expires_at)}, ${countdown(secondsLeft)} left. Pay before then or they go back on sale.`
+            : "Your hold has run out. This order is being cancelled."}
+        </Notice>
+      )}
+
+      {order.status !== "cancelled" && order.status !== "reserving" ? (
         <ol className="grid grid-cols-4 gap-3" aria-label="Order progress">
           {JOURNEY.map((step, index) => (
             <li key={step} className="text-sm" aria-current={index === reached ? "step" : undefined}>
@@ -79,8 +128,12 @@ function OrderDetail() {
           ))}
         </ol>
       ) : (
-        <Notice tone="info">This order was cancelled.</Notice>
+        <Notice tone="info">
+          This order was cancelled.{order.cancellation?.detail ? ` ${order.cancellation.detail}` : ""}
+        </Notice>
       )}
+
+      {order.refund && <Notice tone="info">{refundText(order.refund)}</Notice>}
 
       <Notice>{error}</Notice>
 
@@ -151,7 +204,6 @@ function OrderDetail() {
             </ol>
           </section>
 
-          {/* Refunds aren't automated yet, so the site only offers cancelling before payment. */}
           {order.can_cancel && order.status === "pending_payment" && (
             <Button variant="danger" onClick={cancel} busy={cancelling} className="w-full">
               {cancelling ? "Cancelling…" : "Cancel order"}

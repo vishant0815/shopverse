@@ -8,9 +8,11 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
+import stripe
 from pydantic import ValidationError
 
 from app.config import Settings
+from app.providers import ProviderError
 from app.providers.stripe_provider import StripeProvider
 from app.routes import payments as payment_routes
 from app.routes import webhooks as webhook_routes
@@ -88,14 +90,17 @@ class TestCreatingIntents:
 
 
 class TestWebhooks:
-    def test_succeeded_event_marks_order_paid(self, client, started, orders):
+    def test_succeeded_event_is_announced_to_the_saga(self, client, started, announced):
         number, intent_id = started
 
         response = deliver(client, stripe_event(intent_id))
 
         assert response.status_code == 200
         assert response.json()["outcome"] == "succeeded"
-        assert orders.orders[number]["status"] == "paid"
+        assert announced("PaymentSucceeded") == [("PaymentSucceeded", {
+            "order_number": number, "payment_id": announced()[0][1]["payment_id"],
+            "amount": "59.98", "currency": "GBP",
+        })]
 
     def test_failed_event_is_recorded(self, client, customer, started, orders):
         number, intent_id = started
@@ -111,14 +116,14 @@ class TestWebhooks:
         "t=123,v1=deadbeef",                                    # nonsense
         None,                                                   # replaced below with a wrong secret
     ])
-    def test_unsigned_or_forged_events_are_rejected(self, client, started, orders, signature):
+    def test_unsigned_or_forged_events_are_rejected(self, client, started, announced, signature):
         number, intent_id = started
         payload = stripe_event(intent_id)
         if signature is None:
             signature = sign(payload, secret="whsec_attacker")
 
         assert deliver(client, payload, signature).status_code == 400
-        assert orders.orders[number]["status"] == "pending_payment"
+        assert announced() == []
 
     def test_tampered_payload_is_rejected(self, client, started, orders):
         number, intent_id = started
@@ -133,7 +138,7 @@ class TestWebhooks:
 
         assert deliver(client, payload, sign(payload, timestamp=int(time.time()) - 600)).status_code == 400
 
-    def test_duplicate_delivery_is_processed_once(self, client, started, orders):
+    def test_duplicate_delivery_is_processed_once(self, client, started, announced):
         number, intent_id = started
         payload = stripe_event(intent_id, event_id="evt_same")
 
@@ -142,16 +147,18 @@ class TestWebhooks:
 
         assert first.json()["outcome"] == "succeeded"
         assert second.json()["outcome"] == "duplicate"
-        assert len(orders.confirmed) == 1
+        assert len(announced("PaymentSucceeded")) == 1
 
-    def test_amount_mismatch_never_marks_paid(self, client, customer, started, orders):
+    def test_amount_mismatch_is_announced_with_what_was_taken(self, client, customer, started, announced):
         number, intent_id = started
 
         response = deliver(client, stripe_event(intent_id, amount=100))
 
+        # The saga compares the amount with the order total and refunds it if they differ,
+        # so an order is never marked paid for the wrong amount.
         assert response.json()["outcome"] == "amount_mismatch"
-        assert orders.orders[number]["status"] == "pending_payment"
         assert customer.get(f"/api/v1/payments/{number}").json()["status"] == "amount_mismatch"
+        assert [(kind, data["amount"]) for kind, data in announced()] == [("PaymentSucceeded", "1.00")]
 
     def test_unknown_payment_is_acknowledged(self, client, stripe_provider):
         response = deliver(client, stripe_event("pi_not_ours"))
@@ -166,16 +173,23 @@ class TestWebhooks:
 
         assert response.json()["outcome"] == "ignored"
 
-    def test_orders_down_asks_stripe_to_retry(self, client, started, orders):
+    def test_a_failed_write_is_not_acknowledged(self, client, started, announced, monkeypatch):
+        """A database failure is a 500 (Stripe retries) and leaves nothing half-recorded."""
         number, intent_id = started
         payload = stripe_event(intent_id, event_id="evt_retry")
-        orders.down = True
+        real_enqueue = webhook_routes.service.enqueue
 
-        assert deliver(client, payload).status_code == 503
+        def broken(*args, **kwargs):
+            raise RuntimeError("database unavailable")
 
-        orders.down = False
+        monkeypatch.setattr(webhook_routes.service, "enqueue", broken)
+        with pytest.raises(RuntimeError):
+            deliver(client, payload)
+        assert announced() == []
+
+        monkeypatch.setattr(webhook_routes.service, "enqueue", real_enqueue)
         assert deliver(client, payload).json()["outcome"] == "succeeded"
-        assert orders.orders[number]["status"] == "paid"
+        assert [kind for kind, _ in announced()] == ["PaymentSucceeded"]
 
     def test_simulate_is_disabled_with_stripe(self, customer, started):
         number, _ = started
@@ -202,3 +216,31 @@ class TestConfig:
     def test_short_signing_key_is_refused(self):
         with pytest.raises(ValidationError, match="32 characters"):
             Settings(**{**self.BASE, "jwt_signing_key": "short"})
+
+
+class TestRefundsAtStripe:
+    @staticmethod
+    def provider_with(create):
+        provider = StripeProvider("sk_test_dummy", WEBHOOK_SECRET)
+        provider.client = SimpleNamespace(v1=SimpleNamespace(refunds=SimpleNamespace(create=create)))
+        return provider
+
+    def test_refund_is_for_the_intent_with_an_idempotency_key(self):
+        calls = []
+
+        def create(params, options):
+            calls.append((params, options))
+            return SimpleNamespace(id="re_123")
+
+        refund_id = self.provider_with(create).refund(
+            provider_payment_id="pi_1", amount_minor=5998, idempotency_key="refund-abc")
+
+        assert refund_id == "re_123"
+        assert calls == [({"payment_intent": "pi_1", "amount": 5998}, {"idempotency_key": "refund-abc"})]
+
+    def test_a_stripe_error_becomes_a_provider_error(self):
+        def create(params, options):
+            raise stripe.StripeError("card network down")
+
+        with pytest.raises(ProviderError, match="card network down"):
+            self.provider_with(create).refund(provider_payment_id="pi_1", amount_minor=5998, idempotency_key="k")
