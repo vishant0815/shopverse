@@ -509,6 +509,7 @@ services:
       # Server-rendered catalogue pages read the products service directly over the
       # internal network (cached, read-only). Browsers reach this only through the gateway.
       PRODUCTS_API_URL: http://products:8000
+      SEARCH_API_URL: http://search:8000
     # No published port: visitors come in through the gateway, which is what lets it
     # see their real address for rate limiting.
     expose:

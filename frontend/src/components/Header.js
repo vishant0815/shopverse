@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { useSession } from "@/lib/session";
 
+import SearchBox from "./SearchBox";
 import ThemeSwitch from "./ThemeSwitch";
 
 export default function Header() {
@@ -19,17 +20,7 @@ export default function Header() {
           shop<span className="metal-text">verse</span>
         </Link>
 
-        <form action="/products" role="search" className="inset order-last flex w-full items-center gap-2 py-1.5 pl-4 pr-1.5 sm:order-none sm:w-auto sm:flex-1">
-          <label htmlFor="site-search" className="sr-only">Search products</label>
-          <input
-            id="site-search"
-            name="search"
-            type="search"
-            placeholder="Search phones, shirts, desks…"
-            className="min-w-0 flex-1 bg-transparent py-1.5 outline-none placeholder:text-ink-soft"
-          />
-          <button className="btn btn-metal px-4 py-2 text-sm">Search</button>
-        </form>
+        <SearchBox />
 
         <nav className="ml-auto flex items-center gap-5 text-sm font-medium" aria-label="Account">
           {ready && user ? (

@@ -227,3 +227,15 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 - **Hidden products stay in the index.** A draft or a product with no active option is marked unlisted rather than deleted, so an older listed message can't bring it back.
 
 **Trade-off:** Search lags behind the catalogue, because a change has to pass through the outbox relay and Kafka before the index sees it. Products announced before this change have to be sent once with `python manage.py publish_catalog --once` after deploying it; the command does nothing when products have already been announced. Elasticsearch is one more service to run, and the demo gives it a 512 MB heap.
+
+---
+
+## 022: Storefront search reads the search service, and on-sale stays on the catalogue
+
+**Decision:** The product listing, its facet counts, its sorting and the header's suggestions come from the search service. On-sale browsing, and the listing shown when search is unavailable, still come from the products service, so both keep working.
+
+**Why:**
+- **Facets need the index.** Counting colours, sizes and categories across every match is what the search index is built for. The products service would have to scan the catalogue on every page view.
+- **Shoppers can still browse when search is down.** The listing falls back to the products service with a notice and without facets, so the shop keeps selling.
+
+**Trade-off:** Search results don't carry discounts yet, because the index doesn't store compare-at prices, so search listings show only the current price. The sale badge appears on the on-sale page, which still reads from the products service. Adding discounts to the index needs a mapping change and a reindex, so that's a later change. Search also lags the catalogue by the time an event takes to pass through the outbox and Kafka.

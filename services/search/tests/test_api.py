@@ -80,6 +80,14 @@ def test_filters_combine_for_category_colour_and_size(client, make_product, publ
     assert found(category="clothing", colour="Navy", size="M") == ["Navy Shirt"]
 
 
+def test_brand_filter_ignores_case(client, make_product, publish):
+    publish(make_product("Navy Shirt", brand="Acme"), make_product("Leather Belt", brand="Northwind"))
+
+    assert names(client.get(SEARCH, params={"brand": "acme"})) == ["Navy Shirt"]
+    assert names(client.get(SEARCH, params={"brand": "Northwind"})) == ["Leather Belt"]
+    assert names(client.get(SEARCH, params={"brand": "Nope"})) == []
+
+
 def test_price_range_matches_products_whose_range_overlaps_it(client, make_product, publish):
     publish(
         make_product("Cheap", price_min="10.00", price_max="20.00"),
