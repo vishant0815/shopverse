@@ -125,6 +125,17 @@ class ProductVariant(models.Model):
         return f"{self.product.name} ({options})" if options else self.product.name
 
 
+class ProductRevision(models.Model):
+    """How many catalogue announcements this product has had. The search index uses it to
+    ignore an announcement older than one it already applied (see catalog/events.py)."""
+
+    product = models.OneToOneField(Product, primary_key=True, on_delete=models.CASCADE, related_name="revision_row")
+    revision = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        db_table = "product_revisions"
+
+
 class ProductImage(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="images")
     # Images are stored in object storage (S3 or similar); only the URL is kept here.
