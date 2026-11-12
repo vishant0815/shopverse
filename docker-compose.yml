@@ -78,6 +78,8 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
+      # The index is only ever created by the search service, with its own mapping.
+      action.auto_create_index: "false"
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     volumes:
       - elasticsearch_data:/usr/share/elasticsearch/data

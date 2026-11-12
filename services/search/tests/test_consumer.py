@@ -78,6 +78,18 @@ def test_consumer_applies_messages_including_out_of_order_ones(
     assert stored(es, index, gone["product_id"]) is None
 
 
+def test_a_missing_index_is_recreated_and_the_message_is_not_dead_lettered(
+        running_consumer, send_to_topic, make_product, envelope, es, index):
+    es.indices.delete(index=index)
+    product = make_product("Recreated index", revision=1)
+
+    send_to_topic([(product["product_id"], envelope("ProductUpserted", product))])
+
+    wait_until(lambda: running_consumer.handled == 1)
+    es.indices.refresh(index=index)
+    assert stored(es, index, product["product_id"])["_source"]["name"] == "Recreated index"
+
+
 def test_poison_message_goes_to_the_dead_letter_topic_and_the_consumer_carries_on(
         running_consumer, send_to_topic, topic, make_product, envelope, es, index):
     poison = b"this is not json"

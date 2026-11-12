@@ -15,6 +15,7 @@ from elastic_transport import ConnectionError as TransportConnectionError
 from elastic_transport import ConnectionTimeout
 from elasticsearch import ApiError, Elasticsearch
 
+from .index import ensure_index
 from .indexer import PoisonMessage, process
 
 log = logging.getLogger("search.consumer")
@@ -23,11 +24,18 @@ MAX_ATTEMPTS = 3
 TRANSIENT_STATUSES = {429, 503, 504}
 
 
+def is_index_missing(exc: Exception) -> bool:
+    return isinstance(exc, ApiError) and exc.status_code == 404 and "index_not_found_exception" in str(exc)
+
+
 def is_transient(exc: Exception) -> bool:
-    """Elasticsearch is down, restarting or overloaded: wait it out rather than count it."""
+    """Elasticsearch is down, restarting or overloaded, or the index is missing: wait it out rather
+    than count it. Only a message that is wrong in itself should use up its attempts."""
     if isinstance(exc, (TransportConnectionError, ConnectionTimeout)):
         return True
-    return isinstance(exc, ApiError) and exc.status_code in TRANSIENT_STATUSES
+    if isinstance(exc, ApiError):
+        return exc.status_code in TRANSIENT_STATUSES or is_index_missing(exc)
+    return False
 
 
 def ensure_topics(bootstrap: str, topics: list[str], partitions: int = 3) -> None:
@@ -105,6 +113,8 @@ class SearchConsumer:
             except Exception as exc:
                 if is_transient(exc):
                     log.warning("elasticsearch unavailable, retrying the same message: %s", exc)
+                    if is_index_missing(exc):
+                        self.recreate_index()
                     time.sleep(backoff)
                     backoff = min(backoff * 2, 10)
                     continue
@@ -118,6 +128,12 @@ class SearchConsumer:
             return  # stopping: the offset stays uncommitted, so the message is read again on restart
         self.consumer.commit(message=message, asynchronous=False)
         self.handled += 1
+
+    def recreate_index(self) -> None:
+        try:
+            ensure_index(self.es, self.index)
+        except Exception as exc:  # Elasticsearch still unreachable: the retry loop tries again
+            log.warning("could not recreate the search index yet: %s", exc)
 
     def dead_letter(self, message, exc: Exception) -> None:
         log.error("moving message to %s.dlq: %s", message.topic(), exc)
