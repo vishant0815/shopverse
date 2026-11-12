@@ -170,6 +170,7 @@ class ProductWriteSerializer(serializers.ModelSerializer):
         for variant in created:  # bulk_create skips post_save, so announce these by hand
             events.variant_upserted(variant)
         ProductImage.objects.bulk_create([ProductImage(product=product, **i) for i in images])
+        events.announce_product(product.pk)  # the product's own save came before its variants and images
         return product
 
     def to_representation(self, instance):

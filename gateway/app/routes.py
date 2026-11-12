@@ -34,6 +34,8 @@ ROUTES = [
     Route("/api/v1/payments/", "payments"),
     # Stock levels for the storefront and the seller editor (read-only for shoppers).
     Route("/api/v1/inventory/", "inventory"),
+    # Product search and autosuggest (read-only; the index is fed by catalogue events).
+    Route("/api/v1/search/", "search"),
     Route("/api/v1/webhooks/", "payments"),
     # The checkout page asks this to find out which payment provider is switched on.
     Route("/api/payments-health", "payments", rewrite_to="/health"),

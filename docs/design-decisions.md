@@ -214,3 +214,16 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 
 **Trade-off:** A reservation holds stock for up to 15 minutes even if the customer never pays, so a popular item can look sold out while others are waiting. The window is configurable (`PAYMENT_WINDOW_MINUTES`); shorter windows free stock sooner but give customers less time to pay.
 
+---
+
+## 021: Search reads a copy in Elasticsearch, fed by product snapshots
+
+**Decision:** Product search runs against an Elasticsearch index that the search service keeps up to date from `catalog.products`. Each change sends a full snapshot of the product, and its revision is the document version, so the index only ever moves forward to the newest state. PostgreSQL stays the source of truth, and the search service has no database of its own.
+
+**Why:**
+- **Search the database can't do well.** Fuzzy full-text matching, facet counts, price ranges across variants and autosuggest run against the index. Running them on the products database would load the service that takes seller edits and serves product pages.
+- **Full snapshots keep the consumer simple.** Each message holds everything the index needs, so the search service never calls back to products and never joins anything.
+- **The version check handles replays.** Kafka can redeliver and the relay can resend. Elasticsearch refuses any write whose revision isn't newer, so the result is the same however many times a message arrives.
+- **Hidden products stay in the index.** A draft or a product with no active option is marked unlisted rather than deleted, so an older listed message can't bring it back.
+
+**Trade-off:** Search lags behind the catalogue, because a change has to pass through the outbox relay and Kafka before the index sees it. Products announced before this change have to be sent once with `python manage.py publish_catalog --once` after deploying it; the command does nothing when products have already been announced. Elasticsearch is one more service to run, and the demo gives it a 512 MB heap.

@@ -245,6 +245,7 @@ This starts:
 | `shopverse-products` | 8002 | [Product service](services/products/README.md): categories, products, variants, filters; loads demo data |
 | `shopverse-orders` | 8003 | [Orders service](services/orders/README.md): cart, idempotent checkout, order lifecycle |
 | `shopverse-payments` | 8004 | [Payments service](services/payments/README.md): Stripe test mode or a fake provider; API docs at `/docs` |
+| `shopverse-search` | 8006 | Search service: product search, filters, sorting, autosuggest; API docs at `/api/v1/search/docs` |
 | `shopverse-frontend` | (internal) | [Storefront](frontend/README.md): the website, seller and admin panel; reached through the gateway |
 | `shopverse-gateway` | 3000 | [API gateway](gateway/README.md): the single entry point, serving pages and `/api/...`; readiness at `/health/ready` |
 
@@ -308,7 +309,7 @@ Tests will run automatically on every pull request once CI is added (see roadmap
 - [x] API gateway with rate limiting
 - [x] Kafka event bus and saga orchestration
 - [x] Inventory service with stock reservation
-- [ ] Elasticsearch search service
+- [x] Elasticsearch search service
 - [ ] Seller accounts, coupons, flash sales, reviews
 - [ ] Notification service
 

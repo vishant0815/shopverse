@@ -26,6 +26,8 @@ from .conftest import body_of
     ("/api/v1/webhooks/stripe", "payments"),
     ("/api/v1/inventory/availability", "inventory"),
     ("/api/v1/inventory/stock/", "inventory"),
+    ("/api/v1/search/products", "search"),
+    ("/api/v1/search/suggest", "search"),
 ])
 def test_each_path_goes_to_its_service_unchanged(gateway, services, path, service):
     response = gateway.get(path, params={"page": "2", "search": "desk lamp"})

@@ -17,14 +17,15 @@ Every message is a JSON object with the same envelope:
 }
 ```
 
-- **`id`** is unique per message. Consumers record every id they've handled, so a message delivered twice is handled once.
-- **`key`** is also the Kafka message key. All messages about one order use the order number, so they land on the same partition and are read in the order they were sent. Catalogue messages use the variant id.
+- **`id`** is unique per message. Consumers that keep a database record every id they've handled, so a message delivered twice is handled once. The search service relies on revisions instead (see [Catalogue events for search](#catalogue-events-for-search)).
+- **`key`** is also the Kafka message key. All messages about one order use the order number, so they land on the same partition and are read in the order they were sent. Variant messages use the variant id, and product messages use the product id.
 
 ## Topics
 
 | Topic | Written by | Read by | Messages |
 |---|---|---|---|
 | `catalog.variants` | products | inventory | `VariantUpserted`, `VariantRemoved` |
+| `catalog.products` | products | search | `ProductUpserted`, `ProductRemoved` |
 | `inventory.commands` | orders | inventory | `ReserveStock`, `ReleaseStock`, `CommitStock` |
 | `inventory.events` | inventory | orders | `StockReserved`, `StockRejected`, `StockReleased`, `StockCommitted` |
 | `payments.commands` | orders | payments | `RefundPayment` |
@@ -32,6 +33,12 @@ Every message is a JSON object with the same envelope:
 | `orders.events` | orders | (future: notifications, analytics) | `OrderPlaced`, `OrderConfirmed`, `OrderCancelled` |
 
 Every topic has a dead-letter twin (`<topic>.dlq`). A message that still fails after 3 attempts is moved there with the error attached, so one bad message can't block everything behind it.
+
+## Catalogue events for search
+
+`catalog.products` carries the whole product, not just what changed. A `ProductUpserted` message holds the product's name, brand, category path, images, variants, colours, sizes and price range, plus a **revision**: a counter the products service bumps every time it announces the product. The search service writes each message to Elasticsearch with the revision as the document version, so a write with an older or equal revision is refused. Duplicates and out-of-date messages change nothing, and the service keeps no table of message ids.
+
+A product that is drafted, or has no active option, is sent as `ProductUpserted` with `listed: false`, not as a removal. That way the search service keeps its revision, and an older listed message can't bring the product back. `ProductRemoved` is sent only when the product is deleted.
 
 ## How a message gets out: the transactional outbox
 

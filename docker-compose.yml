@@ -70,6 +70,27 @@ services:
     networks:
       - backend
 
+  elasticsearch:
+    # One node, security off, for local runs and the demo. A real cluster runs three or more
+    # nodes with TLS and authentication. Not published to the host: only the search services use it.
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: shopverse-elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s' > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - backend
+
   users:
     build:
       context: ./services/users
@@ -379,6 +400,51 @@ services:
     networks:
       - backend
 
+  search:
+    build:
+      context: ./services/search
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-search
+    environment:
+      ES_URL: http://elasticsearch:9200
+      SEARCH_INDEX: products
+    ports:
+      - "${SEARCH_PORT:-8006}:8000"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  search-worker:
+    build:
+      context: ./services/search
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-search-worker
+    # The same image as the service, running its Kafka consumer instead of the HTTP server.
+    entrypoint: ["python", "-m", "app.worker"]
+    environment:
+      ES_URL: http://elasticsearch:9200
+      SEARCH_INDEX: products
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+
   gateway:
     build:
       context: ./gateway
@@ -393,6 +459,7 @@ services:
       ORDERS_SERVICE_URL: http://orders:8000
       PAYMENTS_SERVICE_URL: http://payments:8000
       INVENTORY_SERVICE_URL: http://inventory:8000
+      SEARCH_SERVICE_URL: http://search:8000
       STOREFRONT_URL: http://frontend:3000
       # Browsers connect straight to the gateway. Behind a cloud load balancer, set 1.
       TRUSTED_PROXY_HOPS: 0
@@ -417,6 +484,8 @@ services:
       payments:
         condition: service_healthy
       inventory:
+        condition: service_healthy
+      search:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -458,6 +527,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  elasticsearch_data:
 
 networks:
   backend:
