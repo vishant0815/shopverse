@@ -38,6 +38,7 @@ TOPICS = [
     "payments.commands",
     "payments.events",
     "orders.events",
+    "users.events",
 ]
 MAX_ATTEMPTS = 3
 BATCH = 200

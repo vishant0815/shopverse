@@ -96,6 +96,7 @@ Admins can also use every seller endpoint on any product.
 ## Security
 
 - **Role checks** from the verified JWT: only sellers and admins reach seller endpoints, only admins change categories.
+- **Approval:** a seller can read their products at any time, but can change them only while their shop is approved. The users service announces each status (`users.events`, `SellerStatusChanged`), and products keeps a copy. A seller with no status yet is refused.
 - **Ownership:** a seller's queries are always filtered by their own `seller_id`, so another seller's product returns 404. The `seller_id` on a new product comes from the token, never the request body.
 - **Forged or expired tokens** fail signature or expiry checks and get 401.
 - Image URLs are validated as `http`/`https` URLs.

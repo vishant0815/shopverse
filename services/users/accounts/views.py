@@ -1,17 +1,23 @@
 from django.conf import settings
 from rest_framework import generics, permissions, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User
+from .models import SellerProfile, User
+from .permissions import IsAdmin, IsSeller
+from .sellers import InvalidTransition, change_status
 from .serializers import (
     AddressSerializer,
+    AdminSellerSerializer,
     ChangePasswordSerializer,
     LoginSerializer,
     RegisterSerializer,
+    SellerProfileSerializer,
     UserSerializer,
 )
 
@@ -167,3 +173,52 @@ class AddressViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+class SellerProfileView(generics.RetrieveUpdateAPIView):
+    """A seller's own shop: its name and description. Approval is an admin's decision."""
+
+    serializer_class = SellerProfileSerializer
+    permission_classes = [IsSeller]
+    http_method_names = ["get", "patch", "head", "options"]
+
+    def get_object(self):
+        try:
+            return self.request.user.seller_profile
+        except SellerProfile.DoesNotExist:
+            raise NotFound("This account has no shop.")
+
+
+class AdminSellerViewSet(viewsets.ReadOnlyModelViewSet):
+    """Every seller's shop, for admins. Approve or suspend a seller from here.
+
+    The id in the URL is the seller's user id, the same id products and orders use."""
+
+    serializer_class = AdminSellerSerializer
+    permission_classes = [IsAdmin]
+    lookup_field = "user_id"
+    lookup_value_regex = r"[0-9a-fA-F-]{36}"
+
+    def get_queryset(self):
+        queryset = SellerProfile.objects.select_related("user")
+        wanted = self.request.query_params.get("status")
+        if wanted:
+            queryset = queryset.filter(status=wanted)
+        return queryset
+
+    def _move_to(self, new_status):
+        profile = self.get_object()
+        try:
+            profile = change_status(profile, new_status)
+        except InvalidTransition as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(self.get_serializer(profile).data)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, user_id=None):
+        return self._move_to(SellerProfile.Status.APPROVED)
+
+    @action(detail=True, methods=["post"])
+    def suspend(self, request, user_id=None):
+        return self._move_to(SellerProfile.Status.SUSPENDED)
+

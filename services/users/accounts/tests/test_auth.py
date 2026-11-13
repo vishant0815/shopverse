@@ -49,7 +49,7 @@ class TestRegister:
         assert user.check_password(PASSWORD)
 
     def test_can_register_as_seller(self, api_client):
-        response = api_client.post(REGISTER, register_payload(role="seller"))
+        response = api_client.post(REGISTER, register_payload(role="seller", shop_name="Bob's Books"))
 
         assert response.status_code == 201
         assert response.data["user"]["role"] == "seller"

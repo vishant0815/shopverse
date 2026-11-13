@@ -101,3 +101,31 @@ class Address(models.Model):
                     newest.is_default = True
                     newest.save(update_fields=["is_default", "updated_at"])
             return result
+
+
+class SellerProfile(models.Model):
+    """A seller's shop, and whether an admin has approved it to list products.
+
+    Every status change is announced as a SellerStatusChanged event (see
+    accounts/sellers.py), so other services can keep their own copy of the status.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending approval"
+        APPROVED = "approved", "Approved"
+        SUSPENDED = "suspended", "Suspended"
+
+    # Keyed by the user, so a seller has one shop and the seller id is the user id.
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="seller_profile")
+    shop_name = models.CharField(max_length=120)
+    description = models.TextField(max_length=1000, blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status"])]
+
+    def __str__(self):
+        return f"{self.shop_name} ({self.status})"

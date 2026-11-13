@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "accounts",
+    "messaging",
 ]
 
 MIDDLEWARE = [
@@ -99,6 +100,15 @@ else:
     CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 
 AUTH_USER_MODEL = "accounts.User"
+
+# Kafka (see docs/events.md). This service only publishes seller status changes:
+# the worker (`manage.py run_worker`) sends them from the outbox.
+MESSAGING = {
+    "SOURCE": "users",
+    "BOOTSTRAP_SERVERS": env("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+    "GROUP": "users",
+    "TOPICS": [],
+}
 
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.Argon2PasswordHasher",

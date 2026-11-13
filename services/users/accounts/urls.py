@@ -5,6 +5,7 @@ from . import views
 
 router = DefaultRouter()
 router.register("addresses", views.AddressViewSet, basename="address")
+router.register("admin/sellers", views.AdminSellerViewSet, basename="admin-seller")
 
 urlpatterns = [
     path("auth/register/", views.RegisterView.as_view(), name="register"),
@@ -13,4 +14,5 @@ urlpatterns = [
     path("auth/logout/", views.LogoutView.as_view(), name="logout"),
     path("users/me/", views.MeView.as_view(), name="me"),
     path("users/me/change-password/", views.ChangePasswordView.as_view(), name="change-password"),
+    path("sellers/me/", views.SellerProfileView.as_view(), name="seller-me"),
 ] + router.urls

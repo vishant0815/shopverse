@@ -41,6 +41,17 @@ Access tokens last 15 minutes and refresh tokens 7 days (configurable). Both car
 | POST | `addresses/` | Add an address |
 | GET / PATCH / DELETE | `addresses/{id}/` | Read, update or delete one of your own addresses |
 
+### Sellers
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET / PATCH | `sellers/me/` | Seller | Read or update your shop's name and description. The status is read-only |
+| GET | `admin/sellers/` | Admin | Every shop, paginated. Filter with `?status=pending`, `approved` or `suspended` |
+| POST | `admin/sellers/{seller_id}/approve/` | Admin | Approve a pending shop, or reinstate a suspended one |
+| POST | `admin/sellers/{seller_id}/suspend/` | Admin | Suspend an approved shop. The products service refuses its writes within seconds |
+
+Registering as a `seller` needs a `shop_name`, and the shop starts `pending`. A move the rules don't allow (approving an approved shop, say) returns `409`. Each status change is announced on `users.events` (see [docs/events.md](../../docs/events.md)).
+
 ### Other
 
 | Endpoint | Description |

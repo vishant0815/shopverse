@@ -31,6 +31,7 @@ Every message is a JSON object with the same envelope:
 | `payments.commands` | orders | payments | `RefundPayment` |
 | `payments.events` | payments | orders | `PaymentSucceeded`, `PaymentFailed`, `PaymentRefunded`, `RefundFailed` |
 | `orders.events` | orders | (future: notifications, analytics) | `OrderPlaced`, `OrderConfirmed`, `OrderCancelled` |
+| `users.events` | users | products | `SellerStatusChanged` |
 
 Every topic has a dead-letter twin (`<topic>.dlq`). A message that still fails after 3 attempts is moved there with the error attached, so one bad message can't block everything behind it.
 
@@ -39,6 +40,20 @@ Every topic has a dead-letter twin (`<topic>.dlq`). A message that still fails a
 `catalog.products` carries the whole product, not just what changed. A `ProductUpserted` message holds the product's name, brand, category path, images, variants, colours, sizes and price range, plus a **revision**: a counter the products service bumps every time it announces the product. The search service writes each message to Elasticsearch with the revision as the document version, so a write with an older or equal revision is refused. Duplicates and out-of-date messages change nothing, and the service keeps no table of message ids.
 
 A product that is drafted, or has no active option, is sent as `ProductUpserted` with `listed: false`, not as a removal. That way the search service keeps its revision, and an older listed message can't bring the product back. `ProductRemoved` is sent only when the product is deleted.
+
+## Seller approvals: users to products
+
+The users service owns seller accounts. When a seller registers, and whenever an admin approves, suspends or reinstates one, it writes a `SellerStatusChanged` message in the same transaction as the change:
+
+```json
+{ "seller_id": "00000000-0000-4000-8000-000000000001", "status": "approved" }
+```
+
+`status` is `pending`, `approved` or `suspended`. The key is the seller id, so one seller's changes are read in the order they happened.
+
+The products service keeps a copy of each status and refuses a seller's writes (creating, editing, archiving products, variants and images) unless the status is `approved`. A seller with no status yet is refused as well, so an unapproved seller can't write before products has heard about them. Reads are not blocked, so a suspended seller can still see their own products. An unknown status value is retried and then dead-lettered, not guessed.
+
+When the users service was first given approval, its migration wrote a `SellerStatusChanged` message for each existing seller, so the products service knew about them straight away.
 
 ## How a message gets out: the transactional outbox
 

@@ -239,3 +239,13 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 - **Shoppers can still browse when search is down.** The listing falls back to the products service with a notice and without facets, so the shop keeps selling.
 
 **Trade-off:** Search results don't carry discounts yet, because the index doesn't store compare-at prices, so search listings show only the current price. The sale badge appears on the on-sale page, which still reads from the products service. Adding discounts to the index needs a mapping change and a reindex, so that's a later change. Search also lags the catalogue by the time an event takes to pass through the outbox and Kafka.
+
+## 023: Seller approval is announced by event, and products fails closed
+
+**Decision:** Admins approve, suspend and reinstate sellers in the users service. Each change is announced as `SellerStatusChanged` on `users.events`. The products service keeps a copy of each status and refuses a seller's writes unless the seller is approved.
+
+**Why:**
+- **Suspensions take effect in seconds.** The products service checks the access token only, and tokens last 15 minutes. Checking the status against a copy kept up to date by events makes a suspension take effect within seconds, not at the next token refresh.
+- **It reuses what's already there.** Orders and catalogue changes already go through the outbox and idempotent consumers, so the same pattern carries seller status without a new mechanism.
+
+**Trade-off:** A new seller can't write until their approval status reaches products, a few seconds after registration. Failing closed means that if the products worker is down, seller writes wait rather than letting an unchecked seller in. Suspended sellers' listings stay on the storefront for now, because what happens to a suspended shop's products is a product decision for a later change.
