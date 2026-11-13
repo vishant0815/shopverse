@@ -64,6 +64,7 @@ def health(es: Elasticsearch = Depends(es_client)):
 def products(
     q: str = Query("", max_length=100),
     category: str | None = Query(None, max_length=100),
+    brand: str | None = Query(None, max_length=100),
     colour: str | None = Query(None, max_length=50),
     size: str | None = Query(None, max_length=20),
     min_price: Decimal | None = Query(None, ge=0, le=1_000_000),
@@ -77,7 +78,8 @@ def products(
         raise HTTPException(status_code=400, detail="min_price can't be more than max_price.")
     try:
         return search_products(
-            es, get_settings().search_index, q=q.strip(), category=category, colour=colour, size=size,
+            es, get_settings().search_index, q=q.strip(), category=category, brand=brand.strip() if brand else None,
+            colour=colour, size=size,
             min_price=min_price, max_price=max_price, sort=sort, page=page, page_size=page_size,
         )
     except (TransportConnectionError, ConnectionTimeout, ApiError) as exc:

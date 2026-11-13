@@ -2,12 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-const OPTIONS = [
-  ["-created_at", "Newest"],
-  ["min_price", "Price: low to high"],
-  ["-min_price", "Price: high to low"],
-  ["name", "Name"],
-];
+import { SORT_OPTIONS } from "@/lib/search-model";
 
 export default function SortSelect({ value }) {
   const router = useRouter();
@@ -21,13 +16,13 @@ export default function SortSelect({ value }) {
         value={value}
         onChange={(event) => {
           const params = new URLSearchParams(searchParams);
-          params.set("ordering", event.target.value);
+          params.set("sort", event.target.value);
           params.delete("page");
           router.push(`${pathname}?${params}`);
         }}
         className="field w-auto py-2 pr-8"
       >
-        {OPTIONS.map(([key, label]) => (
+        {SORT_OPTIONS.map(([key, label]) => (
           <option key={key} value={key}>{label}</option>
         ))}
       </select>

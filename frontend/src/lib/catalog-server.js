@@ -2,10 +2,28 @@
 // (fast first paint, and search engines can read them). Runs in Node, not the browser.
 import "server-only";
 
+import { normalizeSearch } from "./search-model";
+
 const PRODUCTS = process.env.PRODUCTS_API_URL || "http://localhost:8002";
 const INVENTORY = process.env.INVENTORY_API_URL || "http://localhost:8005";
+const SEARCH = process.env.SEARCH_API_URL || "http://localhost:8006";
 
 export class CatalogueDown extends Error {}
+
+// Raised for any search failure, so the page can fall back to the products service.
+export class SearchDown extends Error {}
+
+// Product listing, facet counts and sorting from the search service.
+export async function searchProducts(params) {
+  const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== "" && value !== undefined));
+  try {
+    const response = await fetch(`${SEARCH}/api/v1/search/products?${query}`, { next: { revalidate: 30 } });
+    if (!response.ok) throw new SearchDown();
+    return normalizeSearch(await response.json());
+  } catch {
+    throw new SearchDown();
+  }
+}
 
 async function get(path, { revalidate = 60 } = {}) {
   let response;

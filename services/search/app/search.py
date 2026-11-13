@@ -36,8 +36,9 @@ def build_query(q: str, min_price, max_price) -> dict:
     return {"bool": {"must": must, "filter": filters}}
 
 
-def search_products(es: Elasticsearch, index: str, *, q: str, category: str | None, colour: str | None,
-                    size: str | None, min_price, max_price, sort: str, page: int, page_size: int) -> dict:
+def search_products(es: Elasticsearch, index: str, *, q: str, category: str | None, brand: str | None = None,
+                    colour: str | None, size: str | None, min_price, max_price, sort: str, page: int,
+                    page_size: int) -> dict:
     body: dict = {
         "query": build_query(q, min_price, max_price),
         # Facets count the matches before the chosen category, colour and size are applied,
@@ -54,6 +55,8 @@ def search_products(es: Elasticsearch, index: str, *, q: str, category: str | No
     filters = []
     if category:
         filters.append({"term": {"category_slugs": category}})  # includes products in its subcategories
+    if brand:
+        filters.append({"term": {"brand.raw": {"value": brand, "case_insensitive": True}}})
     if colour:
         filters.append({"term": {"colours": colour}})
     if size:
