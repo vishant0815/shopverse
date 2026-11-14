@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .filters import ProductFilter
-from .models import Category, Product, ProductImage, ProductVariant
+from .models import Category, Product, ProductImage, ProductVariant, approved_seller_ids
 from .permissions import (
     IsAdminOrReadOnly,
     IsProductOwnerOrAdmin,
@@ -78,7 +78,7 @@ class ProductViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        return Product.objects.active().with_listing_data()
+        return Product.objects.for_shoppers().with_listing_data()
 
     def get_serializer_class(self):
         return ProductListSerializer if self.action == "list" else ProductDetailSerializer
@@ -181,8 +181,8 @@ class VariantLookupView(APIView):
     """Live price and availability for a set of variant ids.
 
     Used by the orders service so prices always come from the catalogue, never
-    from the client. Only variants of published products are returned; anything
-    else is simply missing from the response.
+    from the client. Only variants of published products from approved sellers are
+    returned; anything else is simply missing from the response.
 
         GET /api/v1/variants/lookup/?ids=<uuid>,<uuid>
     """
@@ -207,6 +207,7 @@ class VariantLookupView(APIView):
                 is_active=True,
                 product__status=Product.Status.ACTIVE,
                 product__category__is_active=True,
+                product__seller_id__in=approved_seller_ids(),
             )
             .select_related("product")
             .prefetch_related("product__images")
