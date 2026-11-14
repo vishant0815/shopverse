@@ -22,6 +22,7 @@ export default function AuthForm({ mode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+  const [wantsShop, setWantsShop] = useState(false);
 
   async function submit(event) {
     event.preventDefault();
@@ -37,6 +38,8 @@ export default function AuthForm({ mode }) {
           first_name: form.first_name,
           last_name: form.last_name,
           role: form.seller ? "seller" : "customer",
+          // Only sellers have a shop, so the name is sent only with the seller box ticked.
+          ...(form.seller ? { shop_name: form.shop_name } : {}),
         });
       } else {
         await login(form.email, form.password);
@@ -87,9 +90,24 @@ export default function AuthForm({ mode }) {
         />
         {isRegister && (
           <label className="flex items-start gap-3 text-sm">
-            <input type="checkbox" name="seller" className="mt-0.5 h-4 w-4 accent-[var(--accent)]" />
+            <input
+              type="checkbox"
+              name="seller"
+              className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+              onChange={(event) => setWantsShop(event.target.checked)}
+            />
             <span>I want to sell on Shopverse</span>
           </label>
+        )}
+        {isRegister && wantsShop && (
+          <Field
+            label="Shop name"
+            name="shop_name"
+            maxLength={120}
+            required
+            hint="Your shop starts pending until an admin approves it."
+            error={fieldErrors.shop_name}
+          />
         )}
         <Button type="submit" busy={busy} className="w-full py-3">
           {busy ? "Please wait…" : isRegister ? "Create account" : "Sign in"}
