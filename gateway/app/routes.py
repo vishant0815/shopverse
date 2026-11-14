@@ -21,6 +21,9 @@ ROUTES = [
     Route("/api/v1/auth/", "users"),
     Route("/api/v1/users/", "users"),
     Route("/api/v1/addresses/", "users"),
+    # Seller shops (the seller's own shop) and their approval by admins, both in users.
+    Route("/api/v1/sellers/", "users"),
+    Route("/api/v1/admin/sellers/", "users"),
     Route("/api/v1/categories/", "products"),
     Route("/api/v1/products/", "products"),
     Route("/api/v1/variants/", "products"),
