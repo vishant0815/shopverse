@@ -24,7 +24,7 @@ from django.dispatch import receiver
 
 from messaging.kafka import enqueue
 
-from .models import Category, Product, ProductImage, ProductRevision, ProductVariant
+from .models import Category, Product, ProductImage, ProductRevision, ProductVariant, SellerStatus
 
 VARIANTS_TOPIC = "catalog.variants"
 PRODUCTS_TOPIC = "catalog.products"
@@ -74,7 +74,12 @@ def product_document(product: Product, revision: int) -> dict:
     variants = list(product.variants.order_by("created_at", "sku"))
     images = list(product.images.order_by("position"))
     active_prices = [v.price for v in variants if v.is_active]
-    listed = product.status == Product.Status.ACTIVE and all(c.is_active for c in chain)
+    # A product is listed only while it's published, its categories are active, and its
+    # seller's shop is approved. A suspended shop's products drop out of search this way.
+    seller_approved = SellerStatus.objects.filter(
+        seller_id=product.seller_id, status=SellerStatus.Status.APPROVED,
+    ).exists()
+    listed = product.status == Product.Status.ACTIVE and all(c.is_active for c in chain) and seller_approved
     return {
         "product_id": str(product.id),
         "revision": revision,

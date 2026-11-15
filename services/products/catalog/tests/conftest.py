@@ -82,8 +82,11 @@ def categories(db):
 def make_product(categories):
     def _make(seller_id=None, name="Test Phone", category="phones", brand="Acme",
               status=Product.Status.ACTIVE, variants=(("Black", "M", "100.00"),), image=True):
+        seller_id = seller_id or uuid.uuid4()
+        # Products of an approved shop are the ones shoppers see, so make the seller approved.
+        SellerStatus.objects.get_or_create(seller_id=seller_id, defaults={"status": "approved"})
         product = Product.objects.create(
-            seller_id=seller_id or uuid.uuid4(),
+            seller_id=seller_id,
             category=categories[category],
             name=name,
             brand=brand,

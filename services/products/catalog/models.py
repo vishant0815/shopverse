@@ -44,9 +44,18 @@ class Category(models.Model):
         return ids
 
 
+def approved_seller_ids():
+    """Subquery of the sellers whose shops are approved. Their products can be sold."""
+    return SellerStatus.objects.filter(status=SellerStatus.Status.APPROVED).values("seller_id")
+
+
 class ProductQuerySet(models.QuerySet):
     def active(self):
         return self.filter(status=Product.Status.ACTIVE, category__is_active=True)
+
+    def for_shoppers(self):
+        """Published products in active categories, from sellers whose shop is approved."""
+        return self.active().filter(seller_id__in=approved_seller_ids())
 
     def with_listing_data(self):
         """Everything a product card needs, in a fixed number of queries (no N+1)."""

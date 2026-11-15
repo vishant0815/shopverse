@@ -6,10 +6,10 @@ import uuid
 import pytest
 
 from catalog.handlers import HANDLERS
-from catalog.models import SellerStatus
+from catalog.models import Product, ProductVariant, SellerStatus
 from catalog.permissions import seller_status
 from messaging.kafka import process
-from messaging.models import ProcessedMessage
+from messaging.models import OutboxMessage, ProcessedMessage
 
 SELLER_PRODUCTS = "/api/v1/seller/products/"
 
@@ -124,3 +124,73 @@ class TestEnforcesOnWrites:
 
     def test_admins_can_write_without_a_seller_status(self, admin, categories):
         assert admin.post(SELLER_PRODUCTS, product_payload(), format="json").status_code == 201
+
+
+PUBLIC_PRODUCTS = "/api/v1/products/"
+LOOKUP = "/api/v1/variants/lookup/"
+
+
+def listed_in_latest_announcement(product_id):
+    message = (OutboxMessage.objects.filter(topic="catalog.products", type="ProductUpserted")
+               .order_by("seq"))
+    latest = [m for m in message if m.payload["data"]["product_id"] == str(product_id)][-1]
+    return latest.payload["data"]["listed"]
+
+
+class TestSuspendedShopsAreHidden:
+    def create_listed_product(self, seller):
+        announce(seller.user_id, "approved")
+        created = seller.post(SELLER_PRODUCTS, product_payload(), format="json")
+        assert created.status_code == 201
+        product = Product.objects.get(pk=created.data["id"])
+        return product, ProductVariant.objects.get(product=product)
+
+    def test_shoppers_stop_seeing_a_suspended_shops_products(self, client_as, categories, anon):
+        seller = client_as("seller")
+        product, variant = self.create_listed_product(seller)
+        assert product.slug in [p["slug"] for p in anon.get(PUBLIC_PRODUCTS).data["results"]]
+
+        announce(seller.user_id, "suspended")
+
+        assert product.slug not in [p["slug"] for p in anon.get(PUBLIC_PRODUCTS).data["results"]]
+        assert anon.get(f"{PUBLIC_PRODUCTS}{product.slug}/").status_code == 404
+        assert anon.get(f"{LOOKUP}?ids={variant.id}").data["results"] == []
+
+    def test_reinstating_a_shop_brings_its_products_back(self, client_as, categories, anon):
+        seller = client_as("seller")
+        product, variant = self.create_listed_product(seller)
+        announce(seller.user_id, "suspended")
+
+        announce(seller.user_id, "approved")
+
+        assert product.slug in [p["slug"] for p in anon.get(PUBLIC_PRODUCTS).data["results"]]
+        assert anon.get(f"{LOOKUP}?ids={variant.id}").data["results"][0]["variant_id"] == str(variant.id)
+
+    def test_suspension_republishes_the_product_as_unlisted(self, client_as, categories):
+        seller = client_as("seller")
+        product, _ = self.create_listed_product(seller)
+        assert listed_in_latest_announcement(product.id) is True
+
+        announce(seller.user_id, "suspended")
+        assert listed_in_latest_announcement(product.id) is False
+
+        announce(seller.user_id, "approved")
+        assert listed_in_latest_announcement(product.id) is True
+
+    def test_the_seller_still_sees_their_own_products_while_suspended(self, client_as, categories):
+        seller = client_as("seller")
+        product, _ = self.create_listed_product(seller)
+        announce(seller.user_id, "suspended")
+
+        ids = [p["id"] for p in seller.get(SELLER_PRODUCTS).data["results"]]
+
+        assert str(product.id) in ids
+
+    def test_a_shop_without_a_status_is_not_listed(self, client_as, categories, anon):
+        seller = client_as("seller")
+        product = Product.objects.create(
+            seller_id=uuid.UUID(seller.user_id), name="Unknown seller", brand="X", description="",
+            category=categories["phones"], status=Product.Status.ACTIVE,
+        )
+
+        assert product.slug not in [p["slug"] for p in anon.get(PUBLIC_PRODUCTS).data["results"]]

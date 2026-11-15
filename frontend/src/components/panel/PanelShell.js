@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import RequireSignIn from "@/components/RequireSignIn";
 import { useSession } from "@/lib/session";
 
+import ShopStatusBanner from "./ShopStatusBanner";
+
 const icons = {
   dashboard: "M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z",
   products: "M20 7l-8-4-8 4 8 4 8-4zM4 7v10l8 4 8-4V7",
@@ -13,6 +15,8 @@ const icons = {
   sales: "M4 19V9M10 19V5M16 19v-7M22 19H2",
   orders: "M6 2l1.5 4h9L18 2M3 6h18l-2 14H5z",
   categories: "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+  shop: "M3 9l2-5h14l2 5M3 9v11h18V9M3 9h18M9 20v-6h6v6",
+  sellers: "M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM22 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
 };
 
 const MENUS = {
@@ -23,6 +27,7 @@ const MENUS = {
       ["/seller/products", "My products", "products"],
       ["/seller/products/new", "Add a product", "add"],
       ["/seller/sales", "Sales", "sales"],
+      ["/seller/shop", "My shop", "shop"],
     ],
   },
   admin: {
@@ -31,6 +36,7 @@ const MENUS = {
       ["/admin/orders", "Orders", "orders"],
       ["/admin/categories", "Categories", "categories"],
       ["/admin/products", "All products", "products"],
+      ["/admin/sellers", "Sellers", "sellers"],
     ],
   },
 };
@@ -95,7 +101,10 @@ function RoleGate({ role, children }) {
   return (
     <div className="grid gap-8 md:grid-cols-[230px_1fr]">
       <Sidebar role={role} user={user} />
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0">
+        {role === "seller" && <ShopStatusBanner />}
+        {children}
+      </div>
     </div>
   );
 }
