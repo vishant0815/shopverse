@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 
@@ -7,11 +8,11 @@ from django.db.models.functions import TruncDate
 from django.utils import timezone
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from rest_framework import generics, status
+from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import catalog, coupons, saga
+from . import catalog, coupons, flash_sales, saga
 from .checkout import CheckoutError, place_order
 from .models import Cart, CartItem, Order, OrderItem
 from .permissions import IsAdmin, IsCustomer, IsSeller, user_id_of
@@ -85,6 +86,8 @@ def cart_response(cart, status_code=status.HTTP_200_OK):
                 "size": line["info"].get("size", ""),
                 "thumbnail": line["info"].get("thumbnail"),
                 "unit_price": str(line["unit_price"]),
+                "regular_price": line["info"].get("regular_price"),
+                "flash_sale": line["info"].get("flash_sale"),
                 "line_total": str(line["line_total"]),
             }
             for line in lines
@@ -333,6 +336,29 @@ class AdminTransitionView(APIView):
                 order.move_to(new_status, changed_by=user_id_of(request), note=serializer.validated_data["note"])
         order = Order.objects.select_related("saga").prefetch_related("items", "history").get(pk=order.pk)
         return Response(OrderDetailSerializer(order).data)
+
+
+class FlashSaleSoldView(APIView):
+    """Units sold so far for flash sale items, so a product page can show what is left.
+
+        GET /api/v1/flash-sales/sold/?items=<item id>,<item id>
+
+    Public: it reveals only a count, never who bought."""
+
+    permission_classes = [permissions.AllowAny]
+    MAX_IDS = 100
+
+    def get(self, request):
+        raw = [i.strip() for i in request.query_params.get("items", "").split(",") if i.strip()]
+        if not raw:
+            return Response({"detail": "Pass one or more flash sale item ids in ?items="}, status=400)
+        if len(raw) > self.MAX_IDS:
+            return Response({"detail": f"At most {self.MAX_IDS} ids per request."}, status=400)
+        try:
+            ids = [str(uuid.UUID(i)) for i in raw]
+        except ValueError:
+            return Response({"detail": "Every id must be a UUID."}, status=400)
+        return Response({"results": flash_sales.sold_units(ids)})
 
 
 class AdminCouponListView(generics.ListCreateAPIView):

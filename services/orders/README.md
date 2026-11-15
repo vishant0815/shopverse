@@ -28,6 +28,7 @@ sequenceDiagram
 - **Idempotency:** send an `Idempotency-Key` header (e.g. a UUID generated when the checkout page loads). Repeating the request, even several at the same moment, returns the same order. A database constraint guarantees one order per key per user.
 - **Price protection:** send the `expected_total` the customer saw; if prices changed, checkout returns `409 price_changed` instead of charging a different amount.
 - **Coupons are checked under the same lock.** The code is read and locked with the cart, so its usage count can't change mid-checkout. A code that has expired or run out returns `409 coupon_invalid`, and no order is created.
+- **Flash sale caps are checked under a lock too.** A capped sale item is locked for the checkout, then its units sold across live orders are counted. Asking for more than is left returns `409 flash_sale_sold_out` with `remaining`. Cancelled orders give their units back.
 - **Snapshots:** each order copies product names, SKUs, prices, the seller and the shipping address, so later catalogue or address changes never rewrite an old order.
 
 Stock is not reserved yet; that arrives with the inventory service.
@@ -63,6 +64,7 @@ Base path: `/api/v1/`. Every endpoint needs a JWT from the users service.
 | DELETE | `cart/items/{variant_id}/` | Remove a line |
 | PUT | `cart/coupon/` | Apply a coupon code: `{code}`. Refused with `400` and a `code` saying why, such as `coupon_expired` or `coupon_min_not_met` |
 | DELETE | `cart/coupon/` | Remove the applied code |
+| GET | `flash-sales/sold/?items=<id>,<id>` | Units sold so far for flash sale items, counted from live orders. Public; gives counts only, never buyers |
 
 Items that stop being available are listed in `unavailable_variant_ids` and left out of the totals. If the product service is down, the cart still loads, with `prices_available: false`.
 
@@ -95,6 +97,7 @@ Checkout errors carry a `code`:
 | 409 | `price_changed` | Real total differs from `expected_total` |
 | 409 | `cart_changed` | Cart changed during checkout; retry |
 | 409 | `coupon_invalid` | The applied code can't be used any more (`reason` says why). The cart keeps the code so the customer can see it |
+| 409 | `flash_sale_sold_out` | Fewer units are left at the sale price than the quantity in the basket (`remaining` says how many, `variant_id` says which item) |
 | 503 | `catalog_unavailable` | Product service unreachable; the cart is kept |
 
 ### Sellers
@@ -147,7 +150,7 @@ The API is on http://localhost:8003.
 docker compose run --rm orders pytest
 ```
 
-138 tests, run against PostgreSQL with a fake product service: cart behaviour and limits, coupons (discount maths, every refusal, usage limits, cancelled orders freeing a use, admin rules), server-side pricing, shipping, every checkout error, idempotency (including a duplicate that waits on the lock), cart changes mid-checkout, price protection, snapshots, every legal and illegal status change, ownership, seller privacy, the seller and admin summaries, payment confirmation from the payments service, database constraints and HTTP failures when calling the product service.
+146 tests, run against PostgreSQL with a fake product service: cart behaviour and limits, coupons (discount maths, every refusal, usage limits, cancelled orders freeing a use, admin rules), flash sale prices and caps (sold-out refusals, units counted from live orders, cancelled orders freeing units, the sold count endpoint), server-side pricing, shipping, every checkout error, idempotency (including a duplicate that waits on the lock), cart changes mid-checkout, price protection, snapshots, every legal and illegal status change, ownership, seller privacy, the seller and admin summaries, payment confirmation from the payments service, database constraints and HTTP failures when calling the product service.
 
 ## Configuration
 

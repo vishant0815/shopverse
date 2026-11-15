@@ -4,14 +4,16 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from rest_framework import mixins, permissions, viewsets
+from rest_framework import generics, mixins, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import flash_sales
 from .filters import ProductFilter
-from .models import Category, Product, ProductImage, ProductVariant, approved_seller_ids
+from .models import Category, FlashSale, Product, ProductImage, ProductVariant, approved_seller_ids
 from .permissions import (
+    IsAdmin,
     IsAdminOrReadOnly,
     IsProductOwnerOrAdmin,
     IsSellerOrAdmin,
@@ -20,6 +22,8 @@ from .permissions import (
 )
 from .serializers import (
     CategorySerializer,
+    FlashSaleSerializer,
+    FlashSaleStatusSerializer,
     ImageSerializer,
     ProductDetailSerializer,
     ProductListSerializer,
@@ -212,4 +216,23 @@ class VariantLookupView(APIView):
             .select_related("product")
             .prefetch_related("product__images")
         )
-        return Response({"results": VariantLookupSerializer(variants, many=True).data})
+        sales = flash_sales.running_items(ids)
+        return Response({"results": VariantLookupSerializer(variants, many=True, context={"sales": sales}).data})
+
+
+class AdminFlashSaleListView(generics.ListCreateAPIView):
+    """Flash sales, newest window first. Creating one takes its items in the same request."""
+
+    permission_classes = [IsAdmin]
+    serializer_class = FlashSaleSerializer
+
+    def get_queryset(self):
+        return FlashSale.objects.prefetch_related("items__variant__product").order_by("-starts_at", "-created_at")
+
+
+class AdminFlashSaleDetailView(generics.RetrieveUpdateAPIView):
+    """A sale can be switched on or off. Its name, window and items are fixed once it exists."""
+
+    permission_classes = [IsAdmin]
+    serializer_class = FlashSaleStatusSerializer
+    queryset = FlashSale.objects.all()

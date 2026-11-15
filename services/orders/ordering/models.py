@@ -202,6 +202,8 @@ class OrderItem(models.Model):
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField()
     line_total = models.DecimalField(max_digits=12, decimal_places=2)
+    # The flash sale item this line bought at its sale price, if any. Sold-unit caps count these lines.
+    flash_sale_item_id = models.UUIDField(null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["id"]

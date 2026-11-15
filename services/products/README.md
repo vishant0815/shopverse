@@ -34,7 +34,9 @@ Base path: `/api/v1/`
 | GET | `products/{slug}/` | Product detail with active variants and images |
 | GET | `categories/` | Active categories (flat list) |
 | GET | `categories/tree/` | Active categories as a nested tree, cached in Redis |
-| GET | `variants/lookup/?ids=<id>,<id>` | Live price and details for up to 100 variants; used by the orders service. Variants that can't be bought are left out. |
+| GET | `variants/lookup/?ids=<id>,<id>` | Live price and details for up to 100 variants; used by the orders service. `price` is the flash sale price while a sale runs, with `regular_price` and the running `flash_sale` (or `null`). Variants that can't be bought are left out. |
+| GET, POST | `admin/flash-sales/` (admins) | List flash sales with their items, or create one with its items in one request: `name`, `starts_at`, `ends_at`, and `items` of `variant`, `sale_price` (below the regular price) and `quantity_cap` (or `null` for no cap). A variant can't be in two sales whose windows overlap. |
+| GET, PATCH | `admin/flash-sales/{id}/` (admins) | One sale. Only `is_active` changes, to switch it on or off. |
 
 **Filters on `products/`:**
 
