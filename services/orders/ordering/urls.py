@@ -6,6 +6,7 @@ urlpatterns = [
     path("cart/", views.CartView.as_view(), name="cart"),
     path("cart/items/", views.CartItemsView.as_view(), name="cart-items"),
     path("cart/items/<uuid:variant_id>/", views.CartItemDetailView.as_view(), name="cart-item"),
+    path("cart/coupon/", views.CartCouponView.as_view(), name="cart-coupon"),
     path("checkout/", views.CheckoutView.as_view(), name="checkout"),
     path("orders/", views.MyOrdersView.as_view(), name="my-orders"),
     path("orders/<str:number>/", views.MyOrderDetailView.as_view(), name="my-order"),
@@ -16,4 +17,6 @@ urlpatterns = [
     path("admin/orders/summary/", views.AdminOrderSummaryView.as_view(), name="admin-order-summary"),
     path("admin/orders/<str:number>/", views.AdminOrderDetailView.as_view(), name="admin-order"),
     path("admin/orders/<str:number>/transition/", views.AdminTransitionView.as_view(), name="admin-transition"),
+    path("admin/coupons/", views.AdminCouponListView.as_view(), name="admin-coupons"),
+    path("admin/coupons/<str:code>/", views.AdminCouponDetailView.as_view(), name="admin-coupon"),
 ]

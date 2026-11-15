@@ -13,6 +13,9 @@ class Cart(models.Model):
     prices are looked up live from the product service every time."""
 
     user_id = models.UUIDField(unique=True)
+    # The code the customer applied. Checked again at every read and at checkout, so an
+    # expired or used-up code stops working even if it was applied earlier.
+    coupon_code = models.CharField(max_length=40, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -32,6 +35,67 @@ class CartItem(models.Model):
             models.UniqueConstraint(fields=["cart", "variant_id"], name="one_line_per_variant"),
             models.CheckConstraint(condition=models.Q(quantity__gte=1), name="cart_quantity_positive"),
         ]
+
+
+class Coupon(models.Model):
+    """A discount code that admins create. It takes money off the basket subtotal.
+
+    Shipping is decided before the discount (see pricing.totals_for), so a code never
+    adds a shipping fee. Uses are not stored on the coupon: they are counted from the
+    orders that carry the code (see coupons.py), so a cancelled order frees its use.
+    """
+
+    class Kind(models.TextChoices):
+        PERCENT = "percent", "Percent off"
+        FIXED = "fixed", "Fixed amount off"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Always stored in capitals, so "welcome10" and "WELCOME10" are the same code.
+    code = models.CharField(max_length=40, unique=True)
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    value = models.DecimalField(max_digits=10, decimal_places=2)
+    min_subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    usage_limit = models.PositiveIntegerField(null=True, blank=True)
+    per_customer_limit = models.PositiveIntegerField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind="percent", value__gte=1, value__lte=100)
+                    | models.Q(kind="fixed", value__gt=0)
+                ),
+                name="coupon_value_valid",
+            ),
+            models.CheckConstraint(condition=models.Q(min_subtotal__gte=0), name="coupon_min_subtotal_not_negative"),
+            models.CheckConstraint(
+                condition=models.Q(starts_at__isnull=True)
+                | models.Q(ends_at__isnull=True)
+                | models.Q(ends_at__gt=models.F("starts_at")),
+                name="coupon_ends_after_start",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(usage_limit__isnull=True) | models.Q(usage_limit__gte=1),
+                name="coupon_usage_limit_positive",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(per_customer_limit__isnull=True) | models.Q(per_customer_limit__gte=1),
+                name="coupon_per_customer_limit_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return self.code
+
+    def save(self, *args, **kwargs):
+        self.code = self.code.strip().upper()
+        super().save(*args, **kwargs)
 
 
 def generate_order_number():
@@ -67,6 +131,10 @@ class Order(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_PAYMENT)
     currency = models.CharField(max_length=3, default="GBP")
     subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    # What the coupon took off the subtotal, copied here so the order keeps showing it
+    # even if the coupon is later edited or deleted.
+    coupon_code = models.CharField(max_length=40, blank=True, db_index=True)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     shipping_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     total = models.DecimalField(max_digits=12, decimal_places=2)
     # A copy of the address at the time of ordering. If the user edits or deletes
@@ -88,7 +156,9 @@ class Order(models.Model):
                 name="unique_idempotency_key_per_user",
             ),
             models.CheckConstraint(
-                condition=models.Q(total=models.F("subtotal") + models.F("shipping_fee")),
+                condition=models.Q(
+                    total=models.F("subtotal") - models.F("discount_amount") + models.F("shipping_fee")
+                ),
                 name="order_total_matches_parts",
             ),
         ]

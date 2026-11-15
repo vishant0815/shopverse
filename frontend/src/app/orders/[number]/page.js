@@ -165,6 +165,12 @@ function OrderDetail() {
           </ul>
           <dl className="ml-auto mt-6 max-w-xs space-y-2 border-t border-line pt-5">
             <div className="flex justify-between"><dt>Items</dt><dd>{money(order.subtotal)}</dd></div>
+            {Number(order.discount_amount) > 0 && (
+              <div className="flex justify-between text-accent">
+                <dt>Coupon {order.coupon_code}</dt>
+                <dd className="font-semibold">−{money(order.discount_amount)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt>Delivery</dt>
               <dd className={Number(order.shipping_fee) === 0 ? "font-semibold text-accent" : ""}>

@@ -34,7 +34,22 @@ def price_lines(cart_items, variants):
     return lines, unavailable
 
 
-def totals_for(lines):
-    subtotal = money(sum((line["line_total"] for line in lines), Decimal(0)))
+def subtotal_for(lines):
+    return money(sum((line["line_total"] for line in lines), Decimal(0)))
+
+
+def totals_for(lines, discount=Decimal("0")):
+    """Subtotal, coupon discount, shipping and total.
+
+    Shipping is decided on the subtotal before the discount, so a coupon never adds a
+    shipping fee to a basket that qualified for free delivery.
+    """
+    subtotal = subtotal_for(lines)
+    discount = min(money(discount), subtotal)
     shipping = shipping_for(subtotal)
-    return {"subtotal": subtotal, "shipping_fee": shipping, "total": money(subtotal + shipping)}
+    return {
+        "subtotal": subtotal,
+        "discount_amount": discount,
+        "shipping_fee": shipping,
+        "total": money(subtotal - discount + shipping),
+    }

@@ -8,12 +8,14 @@ never holds rows locked. Inside the transaction the cart is locked and re-read; 
 changed while prices were being fetched, checkout stops and asks the client to retry.
 """
 
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import IntegrityError, transaction
 
-from . import catalog, saga
+from . import catalog, coupons, saga
 from .models import Cart, Order, OrderItem, OrderStatusHistory
-from .pricing import price_lines, totals_for
+from .pricing import price_lines, subtotal_for, totals_for
 
 
 class CheckoutError(Exception):
@@ -69,7 +71,15 @@ def place_order(user_id, shipping_address, idempotency_key="", expected_total=No
                     unavailable_variant_ids=unavailable,
                 )
 
-            totals = totals_for(lines)
+            # The coupon is checked under the cart lock, so its usage count can't change
+            # while this order is being created.
+            subtotal = subtotal_for(lines)
+            try:
+                coupon = coupons.evaluate(cart.coupon_code, subtotal, user_id, lock=True)
+            except coupons.CouponError as error:
+                raise CheckoutError("coupon_invalid", error.message, reason=error.code)
+            discount = coupons.discount_for(coupon, subtotal) if coupon else Decimal("0.00")
+            totals = totals_for(lines, discount)
             if expected_total is not None and expected_total != totals["total"]:
                 raise CheckoutError(
                     "price_changed",
@@ -85,6 +95,7 @@ def place_order(user_id, shipping_address, idempotency_key="", expected_total=No
                 currency=settings.CURRENCY,
                 shipping_address=shipping_address,
                 idempotency_key=idempotency_key,
+                coupon_code=coupon.code if coupon else "",
                 **totals,
             )
             OrderItem.objects.bulk_create([
@@ -109,6 +120,8 @@ def place_order(user_id, shipping_address, idempotency_key="", expected_total=No
                 order=order, from_status="", to_status=order.status, changed_by=user_id, note="Order placed"
             )
             cart.items.all().delete()
+            cart.coupon_code = ""
+            cart.save(update_fields=["coupon_code", "updated_at"])
             # Same transaction: the stock request is sent if and only if the order exists.
             saga.start(order)
     except IntegrityError:

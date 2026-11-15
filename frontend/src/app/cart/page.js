@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
+import CouponField from "@/components/CouponField";
 import { LinePrice } from "@/components/Price";
 import RequireSignIn from "@/components/RequireSignIn";
 import { Notice } from "@/components/ui";
@@ -124,8 +125,17 @@ function Basket() {
       {cart.prices_available && (
         <aside aria-label="Order summary" className="raised h-fit p-6 lg:mt-[5.25rem]">
           <h2 className="text-2xl font-bold">Summary</h2>
-          <dl className="mt-5 space-y-3">
+          <div className="mt-5">
+            <CouponField coupon={cart.coupon} onCart={setCart} />
+          </div>
+          <dl className="space-y-3">
             <div className="flex justify-between"><dt>Items</dt><dd>{money(cart.subtotal)}</dd></div>
+            {Number(cart.discount_amount) > 0 && (
+              <div className="flex justify-between text-accent">
+                <dt>Coupon {cart.coupon?.code}</dt>
+                <dd className="font-semibold">−{money(cart.discount_amount)}</dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt>Delivery</dt>
               <dd className={Number(cart.shipping_fee) === 0 ? "font-semibold text-accent" : ""}>
