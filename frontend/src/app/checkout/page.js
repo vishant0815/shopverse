@@ -82,6 +82,8 @@ function Checkout() {
       if (err.code === "price_changed") {
         setCart(await api("/api/v1/cart/"));
         setError("A price changed since you opened this page. Check the new total, then place your order again.");
+      } else if (err.code === "coupon_invalid") {
+        setError(`${err.message} Remove the code in your basket, then try again.`);
       } else if (err.code === "items_unavailable") {
         setError("Some items in your basket are no longer available. Remove them from your basket, then try again.");
       } else if (err.status === 400 && err.data?.shipping_address) {
@@ -161,6 +163,12 @@ function Checkout() {
         </ul>
         <dl className="mt-5 space-y-3 border-t border-line pt-5">
           <div className="flex justify-between"><dt>Items</dt><dd>{money(cart.subtotal)}</dd></div>
+          {Number(cart.discount_amount) > 0 && (
+            <div className="flex justify-between text-accent">
+              <dt>Coupon {cart.coupon?.code}</dt>
+              <dd className="font-semibold">−{money(cart.discount_amount)}</dd>
+            </div>
+          )}
           <div className="flex justify-between">
             <dt>Delivery</dt>
             <dd className={Number(cart.shipping_fee) === 0 ? "font-semibold text-accent" : ""}>
