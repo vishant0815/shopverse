@@ -16,9 +16,11 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from accounts.models import User
+from accounts.sellers import ensure_approved_shop
 
 # Must match DEMO_SELLER_ID in services/products/catalog/management/commands/seed_catalog.py
 DEMO_SELLER_ID = uuid.UUID("00000000-0000-4000-8000-000000000001")
+DEMO_SHOP_NAME = "Sam's Demo Shop"
 
 ACCOUNTS = [
     {"email": "seller@shopverse.dev", "first_name": "Sam", "last_name": "Seller", "role": User.Role.SELLER, "id": DEMO_SELLER_ID},
@@ -52,4 +54,7 @@ class Command(BaseCommand):
                     setattr(user, field, details[field])
             user.set_password(password)
             user.save()
+            if user.role == User.Role.SELLER:
+                # The demo shop is approved, so its demo products can be managed straight away.
+                ensure_approved_shop(user, DEMO_SHOP_NAME)
             self.stdout.write(f"{action} {user.role} account {email}")

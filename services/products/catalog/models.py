@@ -148,3 +148,22 @@ class ProductImage(models.Model):
 
     def __str__(self):
         return self.url
+
+
+class SellerStatus(models.Model):
+    """Whether a seller's shop is approved, as the users service announces it (SellerStatusChanged).
+
+    Products keeps its own copy, so a seller's write only needs this service's database.
+    A seller with no row is treated as not approved."""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending approval"
+        APPROVED = "approved", "Approved"
+        SUSPENDED = "suspended", "Suspended"
+
+    seller_id = models.UUIDField(primary_key=True, editable=False)
+    status = models.CharField(max_length=20, choices=Status.choices)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.seller_id} ({self.status})"

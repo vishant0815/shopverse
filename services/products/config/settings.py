@@ -119,11 +119,13 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": env("LOG_LEVEL", "INFO")},
 }
 
-# Kafka (see docs/events.md). This service only publishes: the worker
-# (`manage.py run_worker`) sends catalogue events from the outbox.
+# Kafka (see docs/events.md). The worker (`manage.py run_worker`) sends catalogue
+# events from the outbox and applies seller approvals from users.events.
 MESSAGING = {
     "SOURCE": "products",
     "BOOTSTRAP_SERVERS": env("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
     "GROUP": "products",
-    "TOPICS": [],
+    # Seller approvals from the users service (see docs/events.md).
+    "TOPICS": ["users.events"],
+    "HANDLERS": "catalog.handlers.HANDLERS",
 }

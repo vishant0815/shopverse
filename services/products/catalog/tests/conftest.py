@@ -6,7 +6,7 @@ from django.core.cache import cache
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from catalog.models import Category, Product, ProductImage, ProductVariant
+from catalog.models import Category, Product, ProductImage, ProductVariant, SellerStatus
 
 
 @pytest.fixture(autouse=True)
@@ -44,14 +44,20 @@ def anon():
     return APIClient()
 
 
+def approve(client):
+    """Give a test seller an approved shop, as the users service would announce it."""
+    SellerStatus.objects.update_or_create(seller_id=uuid.UUID(client.user_id), defaults={"status": "approved"})
+    return client
+
+
 @pytest.fixture
 def seller(client_as):
-    return client_as("seller")
+    return approve(client_as("seller"))
 
 
 @pytest.fixture
 def other_seller(client_as):
-    return client_as("seller")
+    return approve(client_as("seller"))
 
 
 @pytest.fixture

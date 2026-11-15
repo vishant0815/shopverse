@@ -1,8 +1,10 @@
 from django.contrib.auth import authenticate, password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework import serializers
 
-from .models import Address, User
+from .models import Address, SellerProfile, User
+from .sellers import create_seller_profile
 
 
 def check_password_strength(password, user, field):
@@ -30,10 +32,12 @@ class RegisterSerializer(serializers.ModelSerializer):
     role = serializers.ChoiceField(
         choices=[User.Role.CUSTOMER, User.Role.SELLER], default=User.Role.CUSTOMER
     )
+    # Only used for sellers: their shop is created with it, pending approval.
+    shop_name = serializers.CharField(max_length=120, required=False, allow_blank=True, write_only=True)
 
     class Meta:
         model = User
-        fields = ["email", "password", "first_name", "last_name", "phone", "role"]
+        fields = ["email", "password", "first_name", "last_name", "phone", "role", "shop_name"]
 
     def validate_email(self, value):
         value = value.strip().lower()
@@ -48,11 +52,41 @@ class RegisterSerializer(serializers.ModelSerializer):
             last_name=attrs.get("last_name", ""),
         )
         check_password_strength(attrs["password"], candidate, field="password")
+        if attrs.get("role", User.Role.CUSTOMER) == User.Role.SELLER:
+            shop_name = (attrs.get("shop_name") or "").strip()
+            if not shop_name:
+                raise serializers.ValidationError({"shop_name": ["Sellers need a shop name."]})
+            attrs["shop_name"] = shop_name
         return attrs
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        return User.objects.create_user(password=password, **validated_data)
+        shop_name = validated_data.pop("shop_name", "")
+        with transaction.atomic():
+            user = User.objects.create_user(password=password, **validated_data)
+            if user.role == User.Role.SELLER:
+                create_seller_profile(user, shop_name)
+        return user
+
+
+class SellerProfileSerializer(serializers.ModelSerializer):
+    """A seller's own shop. The status is set by admins, so the seller can only read it."""
+
+    class Meta:
+        model = SellerProfile
+        fields = ["shop_name", "description", "status"]
+        read_only_fields = ["status"]
+
+
+class AdminSellerSerializer(serializers.ModelSerializer):
+    seller_id = serializers.UUIDField(source="user_id", read_only=True)
+    email = serializers.EmailField(source="user.email", read_only=True)
+    full_name = serializers.CharField(source="user.full_name", read_only=True)
+
+    class Meta:
+        model = SellerProfile
+        fields = ["seller_id", "email", "full_name", "shop_name", "description", "status", "created_at"]
+        read_only_fields = fields
 
 
 class LoginSerializer(serializers.Serializer):
