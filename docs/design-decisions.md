@@ -249,3 +249,15 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 - **It reuses what's already there.** Orders and catalogue changes already go through the outbox and idempotent consumers, so the same pattern carries seller status without a new mechanism.
 
 **Trade-off:** A new seller can't write until their approval status reaches products, a few seconds after registration. Failing closed means that if the products worker is down, seller writes wait rather than letting an unchecked seller in. Suspended sellers' listings stay on the storefront for now, because what happens to a suspended shop's products is a product decision for a later change.
+
+## 024: Coupons are checked at checkout and counted from live orders
+
+**Decision:** Admins create coupon codes in the orders service. A code takes a percentage or a fixed amount off the basket subtotal. The basket checks the code every time it is read, and checkout checks it again under the cart lock. A code's uses aren't stored on the code: they are the orders that carry it and haven't been cancelled.
+
+**Why:**
+- **One place for the money.** Checkout already works out the totals and the amount the payment service charges, so the discount is applied there and nowhere else. The order total, the payment and any refund agree without new plumbing.
+- **Limits can't be overrun.** The coupon row is locked in the same transaction as the cart, so two checkouts can't both take the last use. Counting from the orders means cancelling an order gives its use back, with no counter to fall out of step.
+- **Shipping is judged before the discount.** A coupon never adds a shipping fee to a basket that qualified for free delivery.
+
+**Trade-off:** A usage check reads the orders table. An index on the code keeps that cheap, and it's simpler than a counter that cancellations and expired checkouts would have to keep in step. Coupons apply to the whole basket rather than to particular products or sellers. The platform funds them, so sellers' revenue is unchanged. Flash sales and per-product discounts need their own rules and aren't covered here.
+
