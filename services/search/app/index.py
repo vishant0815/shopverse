@@ -12,6 +12,12 @@ deleted from the catalogue) removes a document.
 
 from elasticsearch import ApiError, ConflictError, Elasticsearch, NotFoundError
 
+# Ratings come from the products service: the average (null until a review) and how many visible reviews.
+RATING_FIELDS = {
+    "rating_average": {"type": "float"},
+    "rating_count": {"type": "integer"},
+}
+
 MAPPING = {
     "settings": {"number_of_shards": 1, "number_of_replicas": 0},
     "mappings": {
@@ -37,6 +43,7 @@ MAPPING = {
             "sizes": {"type": "keyword"},
             "price_min": {"type": "scaled_float", "scaling_factor": 100},
             "price_max": {"type": "scaled_float", "scaling_factor": 100},
+            **RATING_FIELDS,
             "image_url": {"type": "keyword", "index": False},
             "images": {"type": "object", "enabled": False},
             "variants": {"type": "object", "enabled": False},
@@ -57,6 +64,8 @@ DOCUMENT_FIELDS = (
 def ensure_index(es: Elasticsearch, name: str) -> None:
     """Create the index if it doesn't exist. Safe when several processes start at once."""
     if es.indices.exists(index=name):
+        # Indices made before ratings existed need the new fields added (a no-op once they are there).
+        es.indices.put_mapping(index=name, properties=RATING_FIELDS)
         return
     try:
         es.indices.create(index=name, **MAPPING)
@@ -71,6 +80,10 @@ def document(data: dict) -> dict:
     listed = bool(data["listed"]) and data["price_min"] is not None  # no active option, nothing to buy
     doc = {key: data[key] for key in DOCUMENT_FIELDS}
     doc["listed"] = listed
+    # Older catalogue events carry no rating; treat that as no reviews yet.
+    average = data.get("rating_average")
+    doc["rating_average"] = float(average) if average is not None else None
+    doc["rating_count"] = int(data.get("rating_count") or 0)
     if listed:
         # Autosuggest only offers listed products: only they have a suggest entry.
         inputs = [text for text in (data["name"], data["brand"]) if text]

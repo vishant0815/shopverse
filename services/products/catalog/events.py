@@ -115,6 +115,9 @@ def product_document(product: Product, revision: int) -> dict:
         "sizes": sorted({v.size for v in variants if v.is_active and v.size}),
         "price_min": _money(min(active_prices)) if active_prices else None,
         "price_max": _money(max(active_prices)) if active_prices else None,
+        # Search shows the rating; it counts visible reviews only (see reviews.refresh_rating).
+        "rating_average": str(product.rating_average) if product.rating_average is not None else None,
+        "rating_count": product.rating_count,
         "created_at": product.created_at.isoformat(),
         "updated_at": product.updated_at.isoformat(),
     }

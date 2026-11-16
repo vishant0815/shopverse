@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import internal_views, views
 
 urlpatterns = [
     path("cart/", views.CartView.as_view(), name="cart"),
@@ -20,4 +20,5 @@ urlpatterns = [
     path("flash-sales/sold/", views.FlashSaleSoldView.as_view(), name="flash-sale-sold"),
     path("admin/coupons/", views.AdminCouponListView.as_view(), name="admin-coupons"),
     path("admin/coupons/<str:code>/", views.AdminCouponDetailView.as_view(), name="admin-coupon"),
+    path("internal/verified-purchase/", internal_views.VerifiedPurchaseView.as_view(), name="verified-purchase"),
 ]

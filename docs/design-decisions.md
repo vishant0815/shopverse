@@ -272,3 +272,13 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 
 **Trade-off:** Search and the storefront can lag a sale's start or end by up to a minute, the scheduler's interval. A sale that ends between the price lookup and checkout is still charged at its sale price; the client's expected total catches any change. Units sold are read from the orders service, so the product page's "left" count is a snapshot and the cap is enforced only at checkout.
 
+## 026: Reviews are written by verified buyers and kept on the product
+
+**Decision:** Customers review products they have received. The products service accepts a review only when the orders service confirms that a delivered order contains the product. Each customer reviews a product once and can edit that review. The product keeps its average and visible-review count, and search shows them on result cards. Admins hide and show reviews, and a hidden review leaves the page and the rating at once. The orders service answers the purchase check on an internal endpoint that the gateway does not route.
+
+**Why:**
+- **Ratings from buyers only.** A review from someone who never received the product is the usual way ratings get gamed, so the check runs on the server against delivered orders, not on anything the storefront sends.
+- **One rating, in one place.** Products keeps the average and count on the product row and announces the product to search whenever they change. Search reads the same copy as the rest of the listing, with no extra call per result.
+- **Fails closed.** If the orders service can't answer, the review is refused with a retry message rather than accepted unchecked. Seller writes wait for approval in the same way.
+
+**Trade-off:** Writing a review makes one call to the orders service, so it waits on that service. Anyone who can reach the orders service directly can ask whether a user and a product match. The endpoint answers only yes or no and the gateway doesn't route it, so it is reachable only inside the network. Reviews show "Verified purchase" rather than the customer's name, because the sign-in token carries an id and a role, not a name; showing names needs a change in the users service. Reviews publish at once and an admin can hide one afterwards; moderating before publication is not built.

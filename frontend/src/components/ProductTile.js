@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { ratingLabel } from "@/lib/reviews";
+
 import { GlassPrice } from "./Price";
 
 export default function ProductTile({ product }) {
@@ -19,6 +21,12 @@ export default function ProductTile({ product }) {
       <div className="px-1 pb-1 pt-3.5">
         <p className="text-sm text-ink-soft">{product.brand}</p>
         <h3 className="font-sans text-base font-semibold leading-snug group-hover:text-accent">{product.name}</h3>
+        {product.rating_count > 0 && (
+          <p className="mt-1.5 text-sm text-ink-soft">
+            <span aria-hidden="true" className="text-accent">★ </span>
+            {ratingLabel(product.rating_average, product.rating_count)}
+          </p>
+        )}
       </div>
     </Link>
   );

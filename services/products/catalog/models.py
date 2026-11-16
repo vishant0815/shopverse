@@ -83,6 +83,9 @@ class Product(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Kept in step with the visible reviews by reviews.refresh_rating; None until the first one.
+    rating_average = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
+    rating_count = models.PositiveIntegerField(default=0)
 
     objects = ProductQuerySet.as_manager()
 
@@ -101,6 +104,37 @@ class Product(models.Model):
         if not self.slug:
             self.slug = unique_slug(self.name)
         super().save(*args, **kwargs)
+
+
+class Review(models.Model):
+    """A customer's review of a product. Only a verified buyer can write one, and only once per product.
+    A hidden review stays in the database for admins; it counts neither towards the rating nor on the page."""
+
+    class Status(models.TextChoices):
+        VISIBLE = "visible", "Visible"
+        HIDDEN = "hidden", "Hidden"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="reviews")
+    # The customer lives in the users service; we keep only their id (database per service).
+    user_id = models.UUIDField(db_index=True)
+    rating = models.PositiveSmallIntegerField()
+    title = models.CharField(max_length=120)
+    body = models.CharField(max_length=2000)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.VISIBLE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["product", "user_id"], name="one_review_per_customer_per_product"),
+            models.CheckConstraint(condition=models.Q(rating__gte=1, rating__lte=5), name="review_rating_range"),
+        ]
+        indexes = [models.Index(fields=["product", "status", "-created_at"])]
+
+    def __str__(self):
+        return f"{self.rating} stars: {self.title}"
 
 
 class ProductVariant(models.Model):

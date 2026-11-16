@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import AddToBasket from "@/components/AddToBasket";
+import ProductReviews from "@/components/ProductReviews";
 import CatalogueUnavailable from "@/components/CatalogueUnavailable";
 import { CatalogueDown, getAvailability, getProduct } from "@/lib/catalog-server";
 
@@ -70,6 +71,10 @@ export default async function ProductPage({ params }) {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="mt-16">
+        <ProductReviews slug={product.slug} productName={product.name} />
       </div>
     </div>
   );
