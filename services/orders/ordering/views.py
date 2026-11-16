@@ -11,13 +11,15 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import catalog, saga
+from . import catalog, coupons, saga
 from .checkout import CheckoutError, place_order
 from .models import Cart, CartItem, Order, OrderItem
 from .permissions import IsAdmin, IsCustomer, IsSeller, user_id_of
-from .pricing import price_lines, totals_for
+from .pricing import price_lines, subtotal_for, totals_for
 from .serializers import (
     AddToCartSerializer,
+    ApplyCouponSerializer,
+    CouponSerializer,
     CancelSerializer,
     CheckoutSerializer,
     OrderDetailSerializer,
@@ -33,6 +35,23 @@ def get_cart(request, lock=False):
     if lock:
         cart = Cart.objects.select_for_update().get(pk=cart.pk)
     return cart
+
+
+def coupon_for_cart(cart, subtotal):
+    """The cart's coupon as the customer should see it, and the discount it gives.
+
+    The code is checked on every read, so a code that has expired or run out since it was
+    applied shows its reason here and gives nothing off.
+    """
+    if not cart.coupon_code:
+        return None, Decimal("0.00")
+    try:
+        coupon = coupons.evaluate(cart.coupon_code, subtotal, cart.user_id)
+    except coupons.CouponError as error:
+        invalid = {"code": cart.coupon_code, "valid": False, "reason": error.code, "message": error.message}
+        return invalid, Decimal("0.00")
+    applied = {"code": coupon.code, "valid": True, "reason": "", "message": "", "kind": coupon.kind, "value": str(coupon.value)}
+    return applied, coupons.discount_for(coupon, subtotal)
 
 
 def cart_response(cart, status_code=status.HTTP_200_OK):
@@ -51,6 +70,9 @@ def cart_response(cart, status_code=status.HTTP_200_OK):
         )
 
     lines, unavailable = price_lines(items, variants)
+    subtotal = subtotal_for(lines)
+    coupon, discount = coupon_for_cart(cart, subtotal)
+    totals = totals_for(lines, discount)
     data = {
         "items": [
             {
@@ -67,10 +89,11 @@ def cart_response(cart, status_code=status.HTTP_200_OK):
             }
             for line in lines
         ],
+        "coupon": coupon,
         "unavailable_variant_ids": unavailable,
         "prices_available": True,
         "currency": settings.CURRENCY,
-        **{key: str(value) for key, value in totals_for(lines).items()},
+        **{key: str(value) for key, value in totals.items()},
     }
     return Response(data, status=status_code)
 
@@ -82,7 +105,10 @@ class CartView(APIView):
         return cart_response(get_cart(request))
 
     def delete(self, request):
-        get_cart(request).items.all().delete()
+        cart = get_cart(request)
+        cart.items.all().delete()
+        cart.coupon_code = ""
+        cart.save(update_fields=["coupon_code", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -144,6 +170,41 @@ class CartItemDetailView(APIView):
         item = self.get_item(request, variant_id)
         cart = item.cart
         item.delete()
+        return cart_response(cart)
+
+
+class CartCouponView(APIView):
+    """Apply a coupon code to the basket, or remove it. The code is checked now, and again at checkout."""
+
+    permission_classes = [IsCustomer]
+
+    def put(self, request):
+        serializer = ApplyCouponSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        code = serializer.validated_data["code"]
+        cart = get_cart(request)
+        if not cart.items.exists():
+            return Response(
+                {"code": "cart_empty", "detail": "Add something to your basket before applying a code."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            variants = catalog.lookup_variants([item.variant_id for item in cart.items.all()])
+        except catalog.CatalogUnavailable:
+            return Response({"detail": "Prices can't be checked right now. Please try again."}, status=503)
+        lines, _ = price_lines(list(cart.items.all()), variants)
+        try:
+            coupons.evaluate(code, subtotal_for(lines), user_id_of(request))
+        except coupons.CouponError as error:
+            return Response({"code": error.code, "detail": error.message}, status=status.HTTP_400_BAD_REQUEST)
+        cart.coupon_code = coupons.normalise(code)
+        cart.save(update_fields=["coupon_code", "updated_at"])
+        return cart_response(cart)
+
+    def delete(self, request):
+        cart = get_cart(request)
+        cart.coupon_code = ""
+        cart.save(update_fields=["coupon_code", "updated_at"])
         return cart_response(cart)
 
 
@@ -272,6 +333,23 @@ class AdminTransitionView(APIView):
                 order.move_to(new_status, changed_by=user_id_of(request), note=serializer.validated_data["note"])
         order = Order.objects.select_related("saga").prefetch_related("items", "history").get(pk=order.pk)
         return Response(OrderDetailSerializer(order).data)
+
+
+class AdminCouponListView(generics.ListCreateAPIView):
+    permission_classes = [IsAdmin]
+    serializer_class = CouponSerializer
+    queryset = coupons.with_used_count()
+
+
+class AdminCouponDetailView(generics.RetrieveUpdateAPIView):
+    """Codes can be edited, switched off or given new limits, but not renamed: past orders refer to them by name."""
+
+    permission_classes = [IsAdmin]
+    serializer_class = CouponSerializer
+    queryset = coupons.with_used_count()
+
+    def get_object(self):
+        return get_object_or_404(self.get_queryset(), code=coupons.normalise(self.kwargs["code"]))
 
 
 # Orders that count as a sale: money has been taken.
