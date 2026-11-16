@@ -176,3 +176,49 @@ class SellerStatus(models.Model):
 
     def __str__(self):
         return f"{self.seller_id} ({self.status})"
+
+
+class FlashSale(models.Model):
+    """A time-boxed sale price on chosen variants. Admins create them; the window is stored in UTC."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=120)
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["starts_at", "created_at"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(ends_at__gt=models.F("starts_at")), name="flash_sale_ends_after_start"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class FlashSaleItem(models.Model):
+    """One variant on sale. While its sale runs it sells at sale_price. A quantity_cap of None means
+    no cap. Units sold are counted by the orders service from live orders, not stored here."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sale = models.ForeignKey(FlashSale, on_delete=models.CASCADE, related_name="items")
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name="flash_sale_items")
+    sale_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))])
+    quantity_cap = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sale__starts_at", "created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["sale", "variant"], name="unique_flash_sale_variant"),
+            models.CheckConstraint(condition=models.Q(sale_price__gt=0), name="flash_sale_price_positive"),
+            models.CheckConstraint(
+                condition=models.Q(quantity_cap__isnull=True) | models.Q(quantity_cap__gt=0),
+                name="flash_sale_cap_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.variant} at {self.sale_price} in {self.sale}"

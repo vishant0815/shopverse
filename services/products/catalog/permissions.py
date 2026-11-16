@@ -27,6 +27,13 @@ class IsAdminOrReadOnly(BasePermission):
         return request.method in SAFE_METHODS or is_admin(request)
 
 
+class IsAdmin(BasePermission):
+    message = "Only admins can manage flash sales."
+
+    def has_permission(self, request, view):
+        return is_admin(request)
+
+
 NOT_APPROVED_MESSAGES = {
     "suspended": "Your shop is suspended, so you can't change products.",
 }

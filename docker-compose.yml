@@ -276,6 +276,38 @@ services:
     networks:
       - backend
 
+  products-scheduler:
+    build:
+      context: ./services/products
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-products-scheduler
+    # The same image as the service, re-announcing products when a flash sale starts or ends,
+    # so search shows the sale price at the right time.
+    entrypoint: ["python", "manage.py", "refresh_flash_sale_listings", "--loop"]
+    environment:
+      DJANGO_SECRET_KEY: ${PRODUCTS_SECRET_KEY}
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,products
+      DB_NAME: products_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      products:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+
   products-worker:
     build:
       context: ./services/products

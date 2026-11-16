@@ -261,3 +261,14 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 
 **Trade-off:** A usage check reads the orders table. An index on the code keeps that cheap, and it's simpler than a counter that cancellations and expired checkouts would have to keep in step. Coupons apply to the whole basket rather than to particular products or sellers. The platform funds them, so sellers' revenue is unchanged. Flash sales and per-product discounts need their own rules and aren't covered here.
 
+## 025: Flash sales set the price in products and count their caps from live orders
+
+**Decision:** Admins create flash sales in the products service: a time window and chosen variants, each with a sale price below its regular price and an optional unit cap. While a sale runs, the variant lookup returns the sale price as `price`, so carts, checkout and the order snapshot all charge it without special cases. Units sold are counted from live orders by the orders service. Checkout takes a Postgres advisory lock on the sale item before it reads the count, so a capped item can't be oversold. Search shows the sale price, and a scheduled job re-announces a product when one of its sales starts or ends.
+
+**Why:**
+- **One price path.** The variant lookup is already the only source of prices for orders, so a sale changes the price in one place and the coupon maths applies on top of it unchanged.
+- **Caps can't be overrun.** The advisory lock serialises checkouts for the same sale item, as the coupon row lock does for a code. Counting from live orders means cancelling an order gives its units back.
+- **No overlapping prices.** A variant can't be in two sales whose windows overlap, so its price is never ambiguous.
+
+**Trade-off:** Search and the storefront can lag a sale's start or end by up to a minute, the scheduler's interval. A sale that ends between the price lookup and checkout is still charged at its sale price; the client's expected total catches any change. Units sold are read from the orders service, so the product page's "left" count is a snapshot and the cap is enforced only at checkout.
+

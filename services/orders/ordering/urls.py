@@ -17,6 +17,7 @@ urlpatterns = [
     path("admin/orders/summary/", views.AdminOrderSummaryView.as_view(), name="admin-order-summary"),
     path("admin/orders/<str:number>/", views.AdminOrderDetailView.as_view(), name="admin-order"),
     path("admin/orders/<str:number>/transition/", views.AdminTransitionView.as_view(), name="admin-transition"),
+    path("flash-sales/sold/", views.FlashSaleSoldView.as_view(), name="flash-sale-sold"),
     path("admin/coupons/", views.AdminCouponListView.as_view(), name="admin-coupons"),
     path("admin/coupons/<str:code>/", views.AdminCouponDetailView.as_view(), name="admin-coupon"),
 ]

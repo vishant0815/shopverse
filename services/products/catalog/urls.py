@@ -14,5 +14,7 @@ product_children.register("images", views.ImageViewSet, basename="image")
 
 urlpatterns = router.urls + [
     path("variants/lookup/", views.VariantLookupView.as_view(), name="variant-lookup"),
+    path("admin/flash-sales/", views.AdminFlashSaleListView.as_view(), name="admin-flash-sales"),
+    path("admin/flash-sales/<uuid:pk>/", views.AdminFlashSaleDetailView.as_view(), name="admin-flash-sale"),
     path("seller/products/<uuid:product_pk>/", include(product_children.urls)),
 ]

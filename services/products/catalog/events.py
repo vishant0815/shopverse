@@ -24,6 +24,8 @@ from django.dispatch import receiver
 
 from messaging.kafka import enqueue
 
+from . import flash_sales
+
 from .models import Category, Product, ProductImage, ProductRevision, ProductVariant, SellerStatus
 
 VARIANTS_TOPIC = "catalog.variants"
@@ -73,7 +75,14 @@ def product_document(product: Product, revision: int) -> dict:
     chain = _category_chain(product.category)
     variants = list(product.variants.order_by("created_at", "sku"))
     images = list(product.images.order_by("position"))
-    active_prices = [v.price for v in variants if v.is_active]
+    # Search shows what a shopper pays, so a running flash sale's price replaces the regular one.
+    sales = flash_sales.running_items([v.id for v in variants])
+
+    def pays(variant):
+        item = sales.get(str(variant.id))
+        return item.sale_price if item else variant.price
+
+    active_prices = [pays(v) for v in variants if v.is_active]
     # A product is listed only while it's published, its categories are active, and its
     # seller's shop is approved. A suspended shop's products drop out of search this way.
     seller_approved = SellerStatus.objects.filter(
@@ -98,7 +107,9 @@ def product_document(product: Product, revision: int) -> dict:
         "images": [{"url": i.url, "alt_text": i.alt_text} for i in images],
         "variants": [{
             "id": str(v.id), "sku": v.sku, "colour": v.colour, "size": v.size,
-            "price": _money(v.price), "compare_at_price": _money(v.compare_at_price), "is_active": v.is_active,
+            "price": _money(pays(v)), "regular_price": _money(v.price),
+            "compare_at_price": _money(v.compare_at_price), "is_active": v.is_active,
+            "flash_sale": flash_sales.flash_sale_payload(sales.get(str(v.id))),
         } for v in variants],
         "colours": sorted({v.colour for v in variants if v.is_active and v.colour}),
         "sizes": sorted({v.size for v in variants if v.is_active and v.size}),

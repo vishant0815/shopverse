@@ -28,6 +28,9 @@ ROUTES = [
     Route("/api/v1/products/", "products"),
     Route("/api/v1/variants/", "products"),
     Route("/api/v1/seller/products/", "products"),
+    # Flash sales: admins create and switch them in products (prices); units sold are counted by orders.
+    Route("/api/v1/admin/flash-sales/", "products"),
+    Route("/api/v1/flash-sales/", "orders"),
     Route("/api/v1/cart/", "orders"),
     Route("/api/v1/checkout/", "orders"),
     Route("/api/v1/orders/", "orders"),
