@@ -40,10 +40,34 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
+    # The contact details other services keep a copy of (see accounts/contact.py).
+    CONTACT_FIELDS = ("email", "first_name", "last_name")
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        user = super().from_db(db, field_names, values)
+        user._contact_as_loaded = user._contact_values()
+        return user
+
+    def _contact_values(self):
+        return tuple(getattr(self, field) for field in self.CONTACT_FIELDS)
+
     def save(self, *args, **kwargs):
         if self.email:
             self.email = self.email.strip().lower()
-        super().save(*args, **kwargs)
+        # Imported here: the messaging app's models must not load while this module does.
+        from .contact import announce_changed, announce_registered
+
+        # The change and its announcement commit together, or not at all.
+        with transaction.atomic():
+            is_new = self._state.adding
+            changed = not is_new and self._contact_values() != getattr(self, "_contact_as_loaded", None)
+            super().save(*args, **kwargs)
+            if is_new:
+                announce_registered(self)
+            elif changed:
+                announce_changed(self)
+            self._contact_as_loaded = self._contact_values()
 
     @property
     def full_name(self):

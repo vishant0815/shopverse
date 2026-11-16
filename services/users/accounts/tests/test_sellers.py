@@ -38,7 +38,9 @@ def admin(make_user):
 
 
 def events_for(seller_id):
-    return [row.payload["data"]["status"] for row in OutboxMessage.objects.filter(key=str(seller_id)).order_by("seq")]
+    # Only seller status messages: the same key also carries the user's contact events.
+    rows = OutboxMessage.objects.filter(key=str(seller_id), type="SellerStatusChanged").order_by("seq")
+    return [row.payload["data"]["status"] for row in rows]
 
 
 class TestRegisteringASeller:

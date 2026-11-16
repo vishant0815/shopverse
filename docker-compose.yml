@@ -371,6 +371,46 @@ services:
     networks:
       - backend
 
+  # Development mail catcher: receives every email the notifications worker sends and shows
+  # them in a web inbox. Nothing is delivered to a real address.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: shopverse-mailpit
+    ports:
+      - "${MAILPIT_WEB_PORT:-8025}:8025"
+    restart: unless-stopped
+    networks:
+      - backend
+
+  notifications-worker:
+    build:
+      context: ./services/notifications
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-notifications-worker
+    # Consumes order, payment and user events and sends the customer emails. No HTTP port.
+    environment:
+      DB_NAME: notifications_db
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      MAIL_FROM: ${MAIL_FROM:-Shopverse <orders@shopverse.example>}
+      SITE_URL: ${SITE_URL:-http://localhost:3002}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - backend
+
   inventory:
     build:
       context: ./services/inventory

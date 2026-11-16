@@ -29,9 +29,9 @@ Every message is a JSON object with the same envelope:
 | `inventory.commands` | orders | inventory | `ReserveStock`, `ReleaseStock`, `CommitStock` |
 | `inventory.events` | inventory | orders | `StockReserved`, `StockRejected`, `StockReleased`, `StockCommitted` |
 | `payments.commands` | orders | payments | `RefundPayment` |
-| `payments.events` | payments | orders | `PaymentSucceeded`, `PaymentFailed`, `PaymentRefunded`, `RefundFailed` |
-| `orders.events` | orders | (future: notifications, analytics) | `OrderPlaced`, `OrderConfirmed`, `OrderCancelled` |
-| `users.events` | users | products | `SellerStatusChanged` |
+| `payments.events` | payments | orders, notifications | `PaymentSucceeded`, `PaymentFailed`, `PaymentRefunded`, `RefundFailed` |
+| `orders.events` | orders | notifications (analytics later) | `OrderPlaced`, `OrderConfirmed`, `OrderCancelled` |
+| `users.events` | users | products, notifications | `SellerStatusChanged`, `UserRegistered`, `UserContactChanged` |
 
 Every topic has a dead-letter twin (`<topic>.dlq`). A message that still fails after 3 attempts is moved there with the error attached, so one bad message can't block everything behind it.
 
@@ -54,6 +54,30 @@ The users service owns seller accounts. When a seller registers, and whenever an
 The products service keeps a copy of each status and refuses a seller's writes (creating, editing, archiving products, variants and images) unless the status is `approved`. A seller with no status yet is refused as well, so an unapproved seller can't write before products has heard about them. Reads are not blocked, so a suspended seller can still see their own products. An unknown status value is retried and then dead-lettered, not guessed.
 
 When the users service was first given approval, its migration wrote a `SellerStatusChanged` message for each existing seller, so the products service knew about them straight away.
+
+## Customer contact and emails: users and orders to notifications
+
+The users service announces a customer's contact details when they change, so the notifications service can email them without calling users:
+
+- `UserRegistered`, when an account is created (signup, an admin, the seed command). A backfill migration sent one for every existing user.
+- `UserContactChanged`, when the first name, last name or email changes, through the profile or in admin.
+
+```json
+{ "user_id": "…", "email": "nia@example.com", "first_name": "Nia", "last_name": "Khan" }
+```
+
+The key is the user id. A save that changes none of these fields announces nothing.
+
+`OrderPlaced` and `OrderConfirmed` carry the item lines the emails show, in `items`: each has `name`, `colour`, `size`, `quantity`, `unit_price` and `line_total`. No event carries the delivery address. The order page shows it.
+
+The notifications service (`services/notifications`) reads `orders.events`, `payments.events` and `users.events`. It keeps its own copy of each customer's name and email, and sends an email for:
+
+- `OrderPlaced`, `OrderConfirmed` and `OrderCancelled` (orders.events);
+- `PaymentFailed` and `PaymentRefunded` (payments.events).
+
+Payment and cancellation events carry only the order number, so the service keeps a map from each order number to its customer, recorded from `OrderPlaced`. The topics are read independently, so a customer's first order can arrive before their contact details. Such a message waits up to two minutes, then goes to the dead-letter topic.
+
+An email is sent inside the message's transaction. If the service crashes after the email leaves but before the commit, the message is read again and the customer may get the email twice. That is accepted: a lost order confirmation is worse than a duplicate.
 
 ## How a message gets out: the transactional outbox
 
