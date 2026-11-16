@@ -41,9 +41,25 @@ def start(order: Order) -> CheckoutSaga:
     enqueue(INVENTORY, "ReserveStock", order.number, {"order_number": order.number, "lines": lines})
     enqueue(ORDERS, "OrderPlaced", order.number, {
         "order_number": order.number, "user_id": str(order.user_id),
-        "total": str(order.total), "currency": order.currency,
+        "total": str(order.total), "currency": order.currency, "items": item_lines(order),
     })
     return saga
+
+
+def item_lines(order: Order) -> list[dict]:
+    """What was bought, for the emails. The delivery address stays out of events on purpose:
+    the order page shows it to the customer."""
+    return [
+        {
+            "name": item.product_name,
+            "colour": item.colour,
+            "size": item.size,
+            "quantity": item.quantity,
+            "unit_price": str(item.unit_price),
+            "line_total": str(item.line_total),
+        }
+        for item in order.items.all()
+    ]
 
 
 # Helpers -------------------------------------------------------------------------------
@@ -159,7 +175,7 @@ def payment_succeeded(message: dict) -> None:
         enqueue(INVENTORY, "CommitStock", order.number, {"order_number": order.number})
         enqueue(ORDERS, "OrderConfirmed", order.number, {
             "order_number": order.number, "user_id": str(order.user_id),
-            "total": str(order.total), "currency": order.currency,
+            "total": str(order.total), "currency": order.currency, "items": item_lines(order),
         })
         return
 
