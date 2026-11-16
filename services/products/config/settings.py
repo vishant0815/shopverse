@@ -76,6 +76,10 @@ else:
 
 CATEGORY_CACHE_SECONDS = int(env("CATEGORY_CACHE_SECONDS", "300"))
 
+# The orders service answers whether a customer bought a product, before their review is accepted.
+ORDERS_SERVICE_URL = env("ORDERS_SERVICE_URL", "http://localhost:8003")
+ORDERS_SERVICE_TIMEOUT = float(env("ORDERS_SERVICE_TIMEOUT", "3"))
+
 LANGUAGE_CODE = "en-gb"
 TIME_ZONE = "UTC"
 USE_I18N = True

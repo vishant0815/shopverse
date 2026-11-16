@@ -65,6 +65,7 @@ Base path: `/api/v1/`. Every endpoint needs a JWT from the users service.
 | PUT | `cart/coupon/` | Apply a coupon code: `{code}`. Refused with `400` and a `code` saying why, such as `coupon_expired` or `coupon_min_not_met` |
 | DELETE | `cart/coupon/` | Remove the applied code |
 | GET | `flash-sales/sold/?items=<id>,<id>` | Units sold so far for flash sale items, counted from live orders. Public; gives counts only, never buyers |
+| GET | `internal/verified-purchase/?user_id=<id>&product_id=<id>` | Internal, for the products service. Says whether the customer has a delivered order containing the product, before a review is accepted. Returns `{"verified": true}` or `{"verified": false}`. The gateway doesn't route it. |
 
 Items that stop being available are listed in `unavailable_variant_ids` and left out of the totals. If the product service is down, the cart still loads, with `prices_available: false`.
 
@@ -150,7 +151,7 @@ The API is on http://localhost:8003.
 docker compose run --rm orders pytest
 ```
 
-146 tests, run against PostgreSQL with a fake product service: cart behaviour and limits, coupons (discount maths, every refusal, usage limits, cancelled orders freeing a use, admin rules), flash sale prices and caps (sold-out refusals, units counted from live orders, cancelled orders freeing units, the sold count endpoint), server-side pricing, shipping, every checkout error, idempotency (including a duplicate that waits on the lock), cart changes mid-checkout, price protection, snapshots, every legal and illegal status change, ownership, seller privacy, the seller and admin summaries, payment confirmation from the payments service, database constraints and HTTP failures when calling the product service.
+153 tests, run against PostgreSQL with a fake product service: the review purchase check (only delivered orders count), cart behaviour and limits, coupons (discount maths, every refusal, usage limits, cancelled orders freeing a use, admin rules), flash sale prices and caps (sold-out refusals, units counted from live orders, cancelled orders freeing units, the sold count endpoint), server-side pricing, shipping, every checkout error, idempotency (including a duplicate that waits on the lock), cart changes mid-checkout, price protection, snapshots, every legal and illegal status change, ownership, seller privacy, the seller and admin summaries, payment confirmation from the payments service, database constraints and HTTP failures when calling the product service.
 
 ## Configuration
 

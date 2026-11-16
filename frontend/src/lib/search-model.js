@@ -113,6 +113,8 @@ export function normalizeSearch(data) {
       brand: hit.brand,
       thumbnail: hit.image_url,
       min_price: hit.price_min,
+      rating_average: hit.rating_average,
+      rating_count: hit.rating_count,
       compare_at_price: null,
       discount_percent: 0,
     })),

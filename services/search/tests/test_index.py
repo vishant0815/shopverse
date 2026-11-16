@@ -1,7 +1,7 @@
 import pytest
 from elasticsearch import NotFoundError
 
-from app.index import ensure_index
+from app.index import document, ensure_index
 from app.indexer import PoisonMessage, process
 
 
@@ -110,3 +110,16 @@ def test_unreadable_or_incomplete_messages_are_poison(es, index, make_product, e
 
 def test_other_message_types_are_ignored(es, index, envelope):
     assert process(es, index, envelope("VariantUpserted", {"variant_id": "x"})) == "ignored"
+
+
+def test_rating_is_indexed_as_a_number(make_product):
+    doc = document(make_product("Navy Cotton Shirt", rating_average="4.50", rating_count=2))
+    assert doc["rating_average"] == 4.5
+    assert doc["rating_count"] == 2
+
+
+def test_an_unrated_product_indexes_no_average(make_product):
+    # Catalogue events sent before ratings existed carry no rating fields at all.
+    doc = document(make_product("Navy Cotton Shirt"))
+    assert doc["rating_average"] is None
+    assert doc["rating_count"] == 0

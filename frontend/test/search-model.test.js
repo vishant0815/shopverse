@@ -102,6 +102,7 @@ describe("normalizeSearch", () => {
       results: [{
         product_id: "p1", slug: "nordic-oak-desk", name: "Nordic Oak Desk", brand: "Nordic",
         image_url: "https://example.test/desk.png", price_min: "229.00", price_max: "259.00",
+        rating_average: 4.5, rating_count: 2,
       }],
       facets: { colours: [], sizes: [], categories: [], price: { min: "229.00", max: "259.00" } },
     });
@@ -116,6 +117,8 @@ describe("normalizeSearch", () => {
       min_price: "229.00",
       compare_at_price: null,
       discount_percent: 0,
+      rating_average: 4.5,
+      rating_count: 2,
     });
     assert.equal(data.facets.price.max, "259.00");
   });
