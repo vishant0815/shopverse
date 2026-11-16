@@ -282,3 +282,19 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 - **Fails closed.** If the orders service can't answer, the review is refused with a retry message rather than accepted unchecked. Seller writes wait for approval in the same way.
 
 **Trade-off:** Writing a review makes one call to the orders service, so it waits on that service. Anyone who can reach the orders service directly can ask whether a user and a product match. The endpoint answers only yes or no and the gateway doesn't route it, so it is reachable only inside the network. Reviews show "Verified purchase" rather than the customer's name, because the sign-in token carries an id and a role, not a name; showing names needs a change in the users service. Reviews publish at once and an admin can hide one afterwards; moderating before publication is not built.
+
+## 027: Customer emails come from a notifications consumer with its own copy of contact details
+
+**Decision:** A notifications worker consumes `orders.events`, `payments.events` and `users.events` and sends the customer emails: order placed, order confirmed, order cancelled, payment failed and refund issued. It keeps its own copy of each customer's name and email, built from `UserRegistered` and `UserContactChanged`, so sending an email never calls the users service. Order events carry the item lines the emails show. No event carries the delivery address; the emails link to the order page for it.
+
+**Why:**
+- **No live dependency on users.** An email doesn't need the users service to be up. Products keeps seller status the same way (decision 023).
+- **Less personal data in flight.** The address stays on the order, and the customer sees it there, rather than being copied into every event.
+- **The service fills the gaps in events.** Payment and cancellation events carry only the order number, so the service keeps an order-to-customer map, recorded from `OrderPlaced`.
+
+**Trade-offs:**
+- A send happens inside the message's transaction. A crash after the email leaves but before the commit sends it again on restart. A duplicate is accepted, because a lost order confirmation is worse.
+- The topics are read independently, so a customer's first order can arrive before their contact details. Such a message waits up to two minutes, then is dead-lettered.
+- Failed sends are not written to `notification_log`. The dead-letter topic records them with the reason, and only sent emails are logged.
+- The emails say "within 15 minutes", not a clock time. `OrderPlaced` is sent before stock is held, and no event carries the hold time.
+- There is no shipping email yet. The orders service has a shipped status but no event for it, so a shipping email would need one first.

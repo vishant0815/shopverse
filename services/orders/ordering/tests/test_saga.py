@@ -313,3 +313,20 @@ def test_the_payment_window_is_configurable(customer, place_order, hold):
 
     remaining = order_of(number).saga.hold_expires_at - timezone.now()
     assert timedelta(minutes=4) < remaining <= timedelta(minutes=5)
+
+
+def test_the_order_events_carry_the_items_but_no_address(customer, place_order, pay, outbox):
+    number = place_order(customer, items=[("10.00", 2), ("5.00", 1)]).data["number"]
+    pay(number, payment_id="pay_items")
+
+    placed = next(data for _, kind, data in outbox() if kind == "OrderPlaced")
+    confirmed = next(data for _, kind, data in outbox() if kind == "OrderConfirmed")
+    # Only what the emails need: the address stays on the order.
+    assert set(placed) == {"order_number", "user_id", "total", "currency", "items"}
+    assert set(confirmed) == set(placed)
+    for event in (placed, confirmed):
+        assert sorted((i["unit_price"], i["quantity"], i["line_total"]) for i in event["items"]) == [
+            ("10.00", 2, "20.00"),
+            ("5.00", 1, "5.00"),
+        ]
+        assert all(i["name"] and "colour" in i and "size" in i for i in event["items"])
