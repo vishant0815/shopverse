@@ -8,7 +8,7 @@ Built with **FastAPI**, **httpx** (async, streaming) and **Redis**.
 browser ──► gateway ──► storefront         pages, scripts, images
                │
                ├──► users                  /api/v1/auth/, users/, addresses/
-               ├──► products               /api/v1/products/, categories/, variants/, seller/products/
+               ├──► products               /api/v1/products/ (incl. reviews), categories/, variants/, seller/products/, admin/reviews/
                ├──► orders                 /api/v1/cart/, checkout/, orders/, seller/sales/, seller/summary/, admin/
                ├──► payments               /api/v1/payments/, webhooks/
                └──► Redis                  rate-limit buckets

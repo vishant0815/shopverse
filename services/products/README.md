@@ -34,7 +34,14 @@ Base path: `/api/v1/`
 | GET | `products/{slug}/` | Product detail with active variants and images |
 | GET | `categories/` | Active categories (flat list) |
 | GET | `categories/tree/` | Active categories as a nested tree, cached in Redis |
-| GET | `variants/lookup/?ids=<id>,<id>` | Live price and details for up to 100 variants; used by the orders service. Variants that can't be bought are left out. |
+| GET | `variants/lookup/?ids=<id>,<id>` | Live price and details for up to 100 variants; used by the orders service. `price` is the flash sale price while a sale runs, with `regular_price` and the running `flash_sale` (or `null`). Variants that can't be bought are left out. |
+| GET, POST | `admin/flash-sales/` (admins) | List flash sales with their items, or create one with its items in one request: `name`, `starts_at`, `ends_at`, and `items` of `variant`, `sale_price` (below the regular price) and `quantity_cap` (or `null` for no cap). A variant can't be in two sales whose windows overlap. |
+| GET, PATCH | `admin/flash-sales/{id}/` (admins) | One sale. Only `is_active` changes, to switch it on or off. |
+| GET | `products/{slug}/reviews/` | The rating summary (average, count, and how many reviews sit at each star level) and the newest 50 visible reviews. Public. |
+| POST | `products/{slug}/reviews/` | Write a review: `rating` (1 to 5), `title` (up to 120 characters) and `body` (20 to 2000 characters). Signed in, and only for a customer with a delivered order for the product, checked with the orders service. One review per customer per product. Refusals: 401, 403 `not_verified_buyer`, 409 `already_reviewed`, 503 `verification_unavailable`. |
+| GET, PUT | `products/{slug}/reviews/mine/` | The signed-in customer's own review and whether they may write one (`verified`). PUT edits the review without repeating the purchase check. |
+| GET | `admin/reviews/` (admins) | Every review, newest first, with its product. Filter with `?status=visible` or `?status=hidden`. |
+| PATCH | `admin/reviews/{id}/` (admins) | Hide a review (`{"status": "hidden"}`) or show it again (`{"status": "visible"}`). The product's rating and its search entry update at once. |
 
 **Filters on `products/`:**
 
@@ -127,7 +134,7 @@ docker compose exec products python manage.py seed_catalog --reset  # recreate d
 docker compose run --rm products pytest
 ```
 
-63 tests cover browsing, sale prices, the variant lookup, every filter, sorting, pagination, N+1 protection, category caching, role checks, ownership, validation rules (including duplicate category names) and forged tokens.
+139 tests cover browsing, product reviews (the verified-buyer check, one review per customer, validation, an orders outage, hiding and the rating), sale prices, the variant lookup, every filter, sorting, pagination, N+1 protection, category caching, role checks, ownership, validation rules (including duplicate category names) and forged tokens.
 
 ## Configuration
 
@@ -140,4 +147,5 @@ docker compose run --rm products pytest
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | `products_db`, required, required, `localhost`, `5432` | |
 | `REDIS_URL` | unset (in-memory cache) | |
 | `CATEGORY_CACHE_SECONDS` | `300` | How long the category tree is cached |
+| `ORDERS_SERVICE_URL`, `ORDERS_SERVICE_TIMEOUT` | `http://localhost:8003`, `3` | Where to ask whether a customer bought a product before a review is accepted |
 | `SEED_DEMO_DATA` | unset | `true` loads demo data on start |

@@ -14,7 +14,7 @@ SORTS = {
 # product_id as the last sort key keeps every page in the same order when scores or prices tie.
 RESULT_FIELDS = [
     "product_id", "slug", "name", "brand", "category", "image_url",
-    "price_min", "price_max", "colours", "sizes",
+    "price_min", "price_max", "colours", "sizes", "rating_average", "rating_count",
 ]
 
 MAX_SUGGESTIONS = 8

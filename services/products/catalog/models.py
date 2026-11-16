@@ -83,6 +83,9 @@ class Product(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Kept in step with the visible reviews by reviews.refresh_rating; None until the first one.
+    rating_average = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
+    rating_count = models.PositiveIntegerField(default=0)
 
     objects = ProductQuerySet.as_manager()
 
@@ -101,6 +104,37 @@ class Product(models.Model):
         if not self.slug:
             self.slug = unique_slug(self.name)
         super().save(*args, **kwargs)
+
+
+class Review(models.Model):
+    """A customer's review of a product. Only a verified buyer can write one, and only once per product.
+    A hidden review stays in the database for admins; it counts neither towards the rating nor on the page."""
+
+    class Status(models.TextChoices):
+        VISIBLE = "visible", "Visible"
+        HIDDEN = "hidden", "Hidden"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="reviews")
+    # The customer lives in the users service; we keep only their id (database per service).
+    user_id = models.UUIDField(db_index=True)
+    rating = models.PositiveSmallIntegerField()
+    title = models.CharField(max_length=120)
+    body = models.CharField(max_length=2000)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.VISIBLE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["product", "user_id"], name="one_review_per_customer_per_product"),
+            models.CheckConstraint(condition=models.Q(rating__gte=1, rating__lte=5), name="review_rating_range"),
+        ]
+        indexes = [models.Index(fields=["product", "status", "-created_at"])]
+
+    def __str__(self):
+        return f"{self.rating} stars: {self.title}"
 
 
 class ProductVariant(models.Model):
@@ -176,3 +210,49 @@ class SellerStatus(models.Model):
 
     def __str__(self):
         return f"{self.seller_id} ({self.status})"
+
+
+class FlashSale(models.Model):
+    """A time-boxed sale price on chosen variants. Admins create them; the window is stored in UTC."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=120)
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["starts_at", "created_at"]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(ends_at__gt=models.F("starts_at")), name="flash_sale_ends_after_start"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class FlashSaleItem(models.Model):
+    """One variant on sale. While its sale runs it sells at sale_price. A quantity_cap of None means
+    no cap. Units sold are counted by the orders service from live orders, not stored here."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sale = models.ForeignKey(FlashSale, on_delete=models.CASCADE, related_name="items")
+    variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, related_name="flash_sale_items")
+    sale_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))])
+    quantity_cap = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sale__starts_at", "created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["sale", "variant"], name="unique_flash_sale_variant"),
+            models.CheckConstraint(condition=models.Q(sale_price__gt=0), name="flash_sale_price_positive"),
+            models.CheckConstraint(
+                condition=models.Q(quantity_cap__isnull=True) | models.Q(quantity_cap__gt=0),
+                name="flash_sale_cap_positive",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.variant} at {self.sale_price} in {self.sale}"

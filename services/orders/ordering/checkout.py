@@ -13,7 +13,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import IntegrityError, transaction
 
-from . import catalog, coupons, saga
+from . import catalog, coupons, flash_sales, saga
 from .models import Cart, Order, OrderItem, OrderStatusHistory
 from .pricing import price_lines, subtotal_for, totals_for
 
@@ -71,6 +71,23 @@ def place_order(user_id, shipping_address, idempotency_key="", expected_total=No
                     unavailable_variant_ids=unavailable,
                 )
 
+            # Flash sale caps: a capped sale item sells only its units. The lock is taken before the
+            # count is read, so a concurrent checkout for the same item waits for this one.
+            for line in lines:
+                sale = line["info"].get("flash_sale")
+                if not sale or not sale.get("quantity_cap"):
+                    continue
+                flash_sales.lock(sale["item_id"])
+                remaining = flash_sales.remaining_units(sale)
+                if line["item"].quantity > remaining:
+                    raise CheckoutError(
+                        "flash_sale_sold_out",
+                        f"Only {remaining} left at the sale price for {line['info']['sku']}. "
+                        "Lower the quantity or remove it to continue.",
+                        variant_id=str(line["item"].variant_id),
+                        remaining=remaining,
+                    )
+
             # The coupon is checked under the cart lock, so its usage count can't change
             # while this order is being created.
             subtotal = subtotal_for(lines)
@@ -113,6 +130,7 @@ def place_order(user_id, shipping_address, idempotency_key="", expected_total=No
                     unit_price=line["unit_price"],
                     quantity=line["item"].quantity,
                     line_total=line["line_total"],
+                    flash_sale_item_id=(line["info"].get("flash_sale") or {}).get("item_id"),
                 )
                 for line in lines
             ])

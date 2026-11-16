@@ -261,6 +261,27 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 
 **Trade-off:** A usage check reads the orders table. An index on the code keeps that cheap, and it's simpler than a counter that cancellations and expired checkouts would have to keep in step. Coupons apply to the whole basket rather than to particular products or sellers. The platform funds them, so sellers' revenue is unchanged. Flash sales and per-product discounts need their own rules and aren't covered here.
 
+## 025: Flash sales set the price in products and count their caps from live orders
+
+**Decision:** Admins create flash sales in the products service: a time window and chosen variants, each with a sale price below its regular price and an optional unit cap. While a sale runs, the variant lookup returns the sale price as `price`, so carts, checkout and the order snapshot all charge it without special cases. Units sold are counted from live orders by the orders service. Checkout takes a Postgres advisory lock on the sale item before it reads the count, so a capped item can't be oversold. Search shows the sale price, and a scheduled job re-announces a product when one of its sales starts or ends.
+
+**Why:**
+- **One price path.** The variant lookup is already the only source of prices for orders, so a sale changes the price in one place and the coupon maths applies on top of it unchanged.
+- **Caps can't be overrun.** The advisory lock serialises checkouts for the same sale item, as the coupon row lock does for a code. Counting from live orders means cancelling an order gives its units back.
+- **No overlapping prices.** A variant can't be in two sales whose windows overlap, so its price is never ambiguous.
+
+**Trade-off:** Search and the storefront can lag a sale's start or end by up to a minute, the scheduler's interval. A sale that ends between the price lookup and checkout is still charged at its sale price; the client's expected total catches any change. Units sold are read from the orders service, so the product page's "left" count is a snapshot and the cap is enforced only at checkout.
+
+## 026: Reviews are written by verified buyers and kept on the product
+
+**Decision:** Customers review products they have received. The products service accepts a review only when the orders service confirms that a delivered order contains the product. Each customer reviews a product once and can edit that review. The product keeps its average and visible-review count, and search shows them on result cards. Admins hide and show reviews, and a hidden review leaves the page and the rating at once. The orders service answers the purchase check on an internal endpoint that the gateway does not route.
+
+**Why:**
+- **Ratings from buyers only.** A review from someone who never received the product is the usual way ratings get gamed, so the check runs on the server against delivered orders, not on anything the storefront sends.
+- **One rating, in one place.** Products keeps the average and count on the product row and announces the product to search whenever they change. Search reads the same copy as the rest of the listing, with no extra call per result.
+- **Fails closed.** If the orders service can't answer, the review is refused with a retry message rather than accepted unchecked. Seller writes wait for approval in the same way.
+
+**Trade-off:** Writing a review makes one call to the orders service, so it waits on that service. Anyone who can reach the orders service directly can ask whether a user and a product match. The endpoint answers only yes or no and the gateway doesn't route it, so it is reachable only inside the network. Reviews show "Verified purchase" rather than the customer's name, because the sign-in token carries an id and a role, not a name; showing names needs a change in the users service. Reviews publish at once and an admin can hide one afterwards; moderating before publication is not built.
 
 ## 027: Customer emails come from a notifications consumer with its own copy of contact details
 

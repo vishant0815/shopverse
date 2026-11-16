@@ -100,6 +100,11 @@ function Basket() {
                       <span className="font-semibold">Item</span>
                     )}
                     <p className="text-sm text-ink-soft">{variantLabel(item)}</p>
+                    {item.flash_sale && (
+                      <p className="mt-1 text-sm font-semibold text-accent">
+                        Flash sale · was {money(item.regular_price)}
+                      </p>
+                    )}
                     <div className="mt-3 flex items-center gap-4">
                       <div className="inset flex items-center rounded-xl" role="group" aria-label={`Quantity of ${item.product_name}`}>
                         <button className="px-3 py-1 text-lg text-ink-soft hover:text-accent disabled:opacity-40" aria-label="One fewer"

@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
+import { discountPercent, minDefined, remainingLabel, remainingUnits } from "@/lib/flashSale";
 import { useSession } from "@/lib/session";
 
+import FlashCountdown from "./FlashCountdown";
 import { PricePanel } from "./Price";
 import { Button, Notice } from "./ui";
 
@@ -50,8 +52,20 @@ export default function AddToBasket({ variants, stock = {} }) {
     () => variants.find((v) => (v.colour || "") === colour && (v.size || "") === size),
     [variants, colour, size],
   );
+  // Units sold at each flash sale price on this product, from the orders service. Empty while loading.
+  const [sold, setSold] = useState({});
+  const flashItemIds = useMemo(() => variants.map((v) => v.flash_sale?.item_id).filter(Boolean), [variants]);
+  useEffect(() => {
+    if (!flashItemIds.length) return;
+    api(`/api/v1/flash-sales/sold/?items=${flashItemIds.join(",")}`)
+      .then((data) => setSold(data.results))
+      .catch(() => setSold({})); // the cap is still enforced at checkout if this count is missing
+  }, [flashItemIds]);
+
   // undefined means "not known", which is treated as available; only a real zero is sold out.
-  const left = selected ? stock[selected.id] : undefined;
+  const flash = selected?.flash_sale || null;
+  const flashLeft = flash?.quantity_cap ? remainingUnits(flash.quantity_cap, sold[flash.item_id]) : undefined;
+  const left = minDefined(selected ? stock[selected.id] : undefined, flashLeft);
   const soldOut = (variant) => stock[variant.id] === 0;
   const maxQuantity = left === undefined ? MAX_QUANTITY : Math.min(MAX_QUANTITY, left);
   const sizeAvailable = (option) => variants.some(
@@ -82,7 +96,14 @@ export default function AddToBasket({ variants, stock = {} }) {
   return (
     <div className="mt-6 space-y-7">
       {selected ? (
-        <PricePanel price={selected.price} was={selected.compare_at_price} discount={selected.discount_percent} />
+        <div className="space-y-4">
+          {flash && <FlashCountdown endsAt={flash.ends_at} />}
+          <PricePanel
+            price={flash ? flash.sale_price : selected.price}
+            was={flash ? selected.price : selected.compare_at_price}
+            discount={flash ? discountPercent(selected.price, flash.sale_price) : selected.discount_percent}
+          />
+        </div>
       ) : (
         <p className="text-ink-soft">That combination isn&apos;t available. Pick another size.</p>
       )}
@@ -146,6 +167,25 @@ export default function AddToBasket({ variants, stock = {} }) {
 
       {left !== undefined && left > 0 && left <= LOW_STOCK && (
         <p className="font-semibold text-power">Only {left} left in this size.</p>
+      )}
+
+      {flash?.quantity_cap && (
+        <div>
+          <p className="mb-2 text-sm font-semibold">{remainingLabel(flashLeft)}</p>
+          <div
+            role="progressbar"
+            aria-label="Sale stock sold"
+            aria-valuemin={0}
+            aria-valuemax={flash.quantity_cap}
+            aria-valuenow={Math.min(sold[flash.item_id] ?? 0, flash.quantity_cap)}
+            className="inset h-2.5 overflow-hidden rounded-full"
+          >
+            <div
+              className="h-full bg-accent"
+              style={{ width: `${Math.min(100, Math.round(((sold[flash.item_id] ?? 0) / flash.quantity_cap) * 100))}%` }}
+            />
+          </div>
+        </div>
       )}
 
       {state.added && (

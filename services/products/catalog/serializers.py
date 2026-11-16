@@ -1,9 +1,10 @@
 from django.db import transaction
+from django.utils import timezone
 from django.utils.text import slugify
 from rest_framework import serializers
 
-from . import events
-from .models import Category, Product, ProductImage, ProductVariant
+from . import events, flash_sales
+from .models import Category, FlashSale, FlashSaleItem, Product, ProductImage, ProductVariant
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -34,16 +35,24 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class VariantSerializer(serializers.ModelSerializer):
     discount_percent = serializers.SerializerMethodField()
+    # The sale running on this variant right now, or None. `price` stays the regular price.
+    flash_sale = serializers.SerializerMethodField()
 
     class Meta:
         model = ProductVariant
-        fields = ["id", "sku", "colour", "size", "price", "compare_at_price", "discount_percent", "is_active"]
+        fields = [
+            "id", "sku", "colour", "size", "price", "compare_at_price", "discount_percent", "is_active", "flash_sale",
+        ]
         read_only_fields = ["id"]
 
     def get_discount_percent(self, obj):
         if obj.compare_at_price and obj.compare_at_price > obj.price:
             return round((1 - obj.price / obj.compare_at_price) * 100)
         return 0
+
+    def get_flash_sale(self, obj):
+        item = flash_sales.running_items([obj.id]).get(str(obj.id))
+        return flash_sales.flash_sale_payload(item)
 
     def validate_sku(self, value):
         return value.strip().upper()
@@ -195,6 +204,91 @@ class VariantLookupSerializer(serializers.ModelSerializer):
             "product_id", "product_name", "product_slug", "seller_id", "thumbnail",
         ]
 
+    def to_representation(self, instance):
+        # `price` is the price a cart line pays: the sale price while a flash sale runs, else the regular price.
+        # `regular_price` is always the regular price, so the basket can show what the sale saves against.
+        data = super().to_representation(instance)
+        item = self.context.get("sales", {}).get(str(instance.id))
+        data["regular_price"] = data["price"]
+        data["price"] = f"{item.sale_price:.2f}" if item else data["price"]
+        data["flash_sale"] = flash_sales.flash_sale_payload(item)
+        return data
+
     def get_thumbnail(self, obj):
         images = list(obj.product.images.all())
         return images[0].url if images else None
+
+
+# Flash sales (admin) --------------------------------------------------------------------------
+
+class FlashSaleItemSerializer(serializers.ModelSerializer):
+    variant = serializers.PrimaryKeyRelatedField(queryset=ProductVariant.objects.select_related("product"))
+    sku = serializers.CharField(source="variant.sku", read_only=True)
+    variant_label = serializers.SerializerMethodField()
+    regular_price = serializers.DecimalField(source="variant.price", max_digits=10, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = FlashSaleItem
+        fields = ["id", "variant", "sku", "variant_label", "regular_price", "sale_price", "quantity_cap"]
+        read_only_fields = ["id"]
+
+    def get_variant_label(self, obj):
+        return str(obj.variant)
+
+
+class FlashSaleSerializer(serializers.ModelSerializer):
+    """Creating a sale takes its items in one request. A sale's items and window are fixed after that:
+    admins switch a sale on or off, which FlashSaleStatusSerializer handles."""
+
+    items = FlashSaleItemSerializer(many=True)
+
+    class Meta:
+        model = FlashSale
+        fields = ["id", "name", "starts_at", "ends_at", "is_active", "items", "created_at"]
+        read_only_fields = ["id", "is_active", "created_at"]
+
+    def validate(self, attrs):
+        starts, ends = attrs["starts_at"], attrs["ends_at"]
+        if ends <= starts:
+            raise serializers.ValidationError({"ends_at": "Must be after the start time."})
+        if ends <= timezone.now():
+            raise serializers.ValidationError({"ends_at": "Must be in the future."})
+        seen = set()
+        for item in attrs["items"]:
+            variant = item["variant"]
+            if variant.id in seen:
+                raise serializers.ValidationError({"items": f"{variant.sku} is listed twice."})
+            seen.add(variant.id)
+            if item["sale_price"] >= variant.price:
+                raise serializers.ValidationError(
+                    {"items": f"{variant.sku}: the sale price must be below the regular price of {variant.price}."}
+                )
+            if flash_sales.clashing_items(variant.id, starts, ends).exists():
+                raise serializers.ValidationError(
+                    {"items": f"{variant.sku} is already in another sale that overlaps this one."}
+                )
+        return attrs
+
+    def create(self, validated_data):
+        items = validated_data.pop("items")
+        with transaction.atomic():
+            sale = FlashSale.objects.create(**validated_data)
+            FlashSaleItem.objects.bulk_create(FlashSaleItem(sale=sale, **item) for item in items)
+            # A sale that is already running, or starts soon, changes what search shows for its products.
+            product_ids = {item.variant.product_id for item in sale.items.select_related("variant")}
+            transaction.on_commit(lambda: [events.announce_product(pid) for pid in product_ids])
+        return sale
+
+
+class FlashSaleStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FlashSale
+        fields = ["id", "name", "starts_at", "ends_at", "is_active"]
+        read_only_fields = ["id", "name", "starts_at", "ends_at"]
+
+    def update(self, instance, validated_data):
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)
+            product_ids = {item.variant.product_id for item in instance.items.select_related("variant")}
+            transaction.on_commit(lambda: [events.announce_product(pid) for pid in product_ids])
+        return instance
