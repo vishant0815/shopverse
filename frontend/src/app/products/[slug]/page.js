@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import AddToBasket from "@/components/AddToBasket";
+import { TrackProductView } from "@/components/Analytics";
 import ProductReviews from "@/components/ProductReviews";
 import CatalogueUnavailable from "@/components/CatalogueUnavailable";
 import { CatalogueDown, getAvailability, getProduct } from "@/lib/catalog-server";
@@ -32,6 +33,7 @@ export default async function ProductPage({ params }) {
 
   return (
     <div>
+      <TrackProductView productId={product.id} />
       <nav aria-label="Breadcrumb" className="mb-6 text-sm text-ink-soft">
         <Link href="/products" className="hover:text-accent">All products</Link>
         <span aria-hidden="true"> / </span>
@@ -63,7 +65,7 @@ export default async function ProductPage({ params }) {
         <div>
           {product.brand && <p className="text-ink-soft">{product.brand}</p>}
           <h1 className="mt-1 text-4xl font-extrabold sm:text-5xl">{product.name}</h1>
-          <AddToBasket variants={product.variants} stock={stock} />
+          <AddToBasket variants={product.variants} stock={stock} productId={product.id} />
           {product.description && (
             <div className="mt-10">
               <h2 className="text-xl font-bold">About this product</h2>

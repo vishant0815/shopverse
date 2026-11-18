@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { TrackSearch } from "@/components/Analytics";
 import CatalogueUnavailable from "@/components/CatalogueUnavailable";
 import ProductTile from "@/components/ProductTile";
 import SortSelect from "@/components/SortSelect";
@@ -105,6 +106,8 @@ export default async function ProductsPage({ searchParams }) {
 
   return (
     <div className="grid gap-10 md:grid-cols-[240px_1fr]">
+      {/* Recorded once per search, not again for each page of its results. */}
+      {params.search && params.page === 1 ? <TrackSearch query={params.search} resultCount={count} /> : null}
       <aside aria-label="Filters" className="space-y-8">
         <nav aria-label="Categories" className="raised p-5">
           <h2 className="mb-3 text-lg font-bold">Categories</h2>

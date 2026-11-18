@@ -30,7 +30,9 @@ Every message is a JSON object with the same envelope:
 | `inventory.events` | inventory | orders | `StockReserved`, `StockRejected`, `StockReleased`, `StockCommitted` |
 | `payments.commands` | orders | payments | `RefundPayment` |
 | `payments.events` | payments | orders, notifications | `PaymentSucceeded`, `PaymentFailed`, `PaymentRefunded`, `RefundFailed` |
-| `orders.events` | orders | notifications (analytics later) | `OrderPlaced`, `OrderConfirmed`, `OrderCancelled` |
+| `orders.events` | orders | notifications, analytics (Spark) | `OrderPlaced`, `OrderConfirmed`, `OrderCancelled` |
+| `clickstream.events` | clickstream collector | analytics (Spark) | `product_view`, `search`, `add_to_cart` (see below) |
+| `clickstream.events.dlq` | analytics (Spark) | nobody yet; check by hand | Messages that couldn't be read as a storefront event |
 | `users.events` | users | products, notifications | `SellerStatusChanged`, `UserRegistered`, `UserContactChanged` |
 
 Every topic has a dead-letter twin (`<topic>.dlq`). A message that still fails after 3 attempts is moved there with the error attached, so one bad message can't block everything behind it.
@@ -68,7 +70,7 @@ The users service announces a customer's contact details when they change, so th
 
 The key is the user id. A save that changes none of these fields announces nothing.
 
-`OrderPlaced` and `OrderConfirmed` carry the item lines the emails show, in `items`: each has `name`, `colour`, `size`, `quantity`, `unit_price` and `line_total`. No event carries the delivery address. The order page shows it.
+`OrderPlaced` and `OrderConfirmed` carry the item lines the emails show, in `items`: each has `product_id`, `name`, `colour`, `size`, `quantity`, `unit_price` and `line_total`. The product id is there for analytics, which counts purchases per product. No event carries the delivery address. The order page shows it.
 
 The notifications service (`services/notifications`) reads `orders.events`, `payments.events` and `users.events`. It keeps its own copy of each customer's name and email, and sends an email for:
 
@@ -78,6 +80,22 @@ The notifications service (`services/notifications`) reads `orders.events`, `pay
 Payment and cancellation events carry only the order number, so the service keeps a map from each order number to its customer, recorded from `OrderPlaced`. The topics are read independently, so a customer's first order can arrive before their contact details. Such a message waits up to two minutes, then goes to the dead-letter topic.
 
 An email is sent inside the message's transaction. If the service crashes after the email leaves but before the commit, the message is read again and the customer may get the email twice. That is accepted: a lost order confirmation is worse than a duplicate.
+
+## Storefront events: clickstream to Spark
+
+The storefront records three events: `product_view` (with `source` of `search`, `category` or `direct`), `search` (the query and how many results it gave), and `add_to_cart`. It sends them in batches of up to 100 to `POST /api/v1/clickstream/events` through the gateway. The collector (`services/clickstream`) checks each event against its schema and queues it on `clickstream.events`, keyed by the anonymous session id.
+
+These messages don't use the envelope above, and they don't go through the outbox. Each event is the event itself, with two fields added: `user_id` (from the signed-in shopper's token, or `null`) and `received_at`. The request is answered `202` once the event is queued, not once Kafka has stored it. Analytics can lose a few events if a broker or the collector fails at the wrong moment. An order confirmation can't be lost, which is why orders use the outbox.
+
+Every event has an `event_id`. A batch sent again is counted once, which lets the storefront retry after a network failure. A `503` means the collector's queue was full, and the same batch should be sent again.
+
+The Spark job (`analytics/clickstream`) reads `clickstream.events` and `orders.events`, drops repeats by `event_id`, and writes:
+
+- `raw_events`: every accepted event, as Parquet, partitioned by date and hour;
+- `product_totals`: per product and five-minute window, the views, add-to-carts and units sold (`OrderConfirmed` items);
+- `search_terms`: how often each search term was run in each window.
+
+A message the job can't read goes to `clickstream.events.dlq` with its original text, so nothing is dropped silently.
 
 ## How a message gets out: the transactional outbox
 

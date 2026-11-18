@@ -47,7 +47,8 @@ log = logging.getLogger("gateway")
 METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
 HEALTH_PATHS = {"users": "/health/", "products": "/health/", "orders": "/health/", "payments": "/health",
-                "inventory": "/health", "search": "/health", "storefront": "/favicon.svg"}
+                "inventory": "/health", "search": "/health", "clickstream": "/health",
+                "storefront": "/favicon.svg"}
 # Fingerprinted build files: many per page load and never interesting in the log.
 QUIET_PATHS = ("/_next/static/", "/favicon.svg")
 
@@ -191,7 +192,9 @@ def create_app(settings: Settings | None = None, *, transport: httpx.AsyncBaseTr
                 return error(429, f"Too many requests. Try again in {wait} second{'s' if wait != 1 else ''}.",
                              "rate_limited", rid, limit_headers)
 
-        if token_problem:
+        # Analytics never turns a shopper away: the collector reads the token itself and records
+        # the event as anonymous when it does not check out.
+        if token_problem and route.service != "clickstream":
             return error(401, token_problem, "token_not_valid", rid, {"WWW-Authenticate": "Bearer", **limit_headers})
 
         return await pass_on(request, route.service, route.rewrite_to or path, body, ip, limit_headers)

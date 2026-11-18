@@ -298,3 +298,20 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 - Failed sends are not written to `notification_log`. The dead-letter topic records them with the reason, and only sent emails are logged.
 - The emails say "within 15 minutes", not a clock time. `OrderPlaced` is sent before stock is held, and no event carries the hold time.
 - There is no shipping email yet. The orders service has a shipped status but no event for it, so a shipping email would need one first.
+
+## 028: Storefront events go to Kafka through a collector, and Spark writes Parquet
+
+**Decision:** The storefront sends product views, searches and add-to-cart events to a small collector service, which queues them on `clickstream.events`. A Spark streaming job reads that topic and `orders.events`, drops repeats by event id, and writes raw events, five-minute product totals and search terms to Parquet on a shared volume. Order item lines now carry `product_id`, so purchases can be counted per product.
+
+**Why:**
+- **The gateway stays a router.** Ingest has its own service, so it scales and fails on its own, and the gateway doesn't take write traffic it doesn't own today.
+- **Analytics doesn't use the outbox.** A lost search event is acceptable. A lost order confirmation is not, so orders keep the outbox and analytics doesn't copy it.
+- **Parquet first.** The roadmap items that read these tables (seller analytics, recommendations) can read the files directly, so no database is added before they need one.
+- **Event ids make retries safe.** The storefront can resend a batch after a failed request, and Spark counts each event once.
+
+**Trade-offs:**
+- "Accepted" means queued in the collector. If the collector process dies before the broker has an event, that event is lost. Analytics accepts this.
+- Parquet on one Docker volume is not a warehouse. Spark runs in local mode on one machine; spreading it across machines is a later change.
+- Spark's default watermark rule waits for the slowest input, and the orders stream can go quiet for hours. The job uses the `max` policy so windows keep closing. A purchase that arrives more than ten minutes late is left out of the totals.
+- Visitors are tied together by an anonymous id in localStorage, not by an IP address. Nothing else about a visitor is collected: no IP address, user agent or full page URLs. The user id comes from the signed-in token, never from the request body.
+- The gateway lets clickstream requests through with an expired or broken token, so the collector can record them as anonymous. Every other route still refuses such a token at the gateway.

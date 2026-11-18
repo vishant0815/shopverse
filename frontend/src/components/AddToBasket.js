@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { api } from "@/lib/api";
+import { tracker } from "@/lib/clickstream";
 import { discountPercent, minDefined, remainingLabel, remainingUnits } from "@/lib/flashSale";
 import { useSession } from "@/lib/session";
 
@@ -34,7 +35,7 @@ function OptionButton({ selected, disabled, onClick, children }) {
   );
 }
 
-export default function AddToBasket({ variants, stock = {} }) {
+export default function AddToBasket({ variants, stock = {}, productId }) {
   const { user, refreshCart } = useSession();
   const router = useRouter();
   const pathname = usePathname();
@@ -84,6 +85,7 @@ export default function AddToBasket({ variants, stock = {} }) {
     setState({ busy: true, error: "", added: false });
     try {
       await api("/api/v1/cart/items/", { method: "POST", body: { variant_id: selected.id, quantity: Math.min(quantity, maxQuantity) } });
+      tracker().track("add_to_cart", { product_id: productId, variant_id: selected.id, quantity: Math.min(quantity, maxQuantity) });
       await refreshCart();
       setState({ busy: false, error: "", added: true });
     } catch (error) {
