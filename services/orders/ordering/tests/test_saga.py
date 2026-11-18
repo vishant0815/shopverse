@@ -330,3 +330,7 @@ def test_the_order_events_carry_the_items_but_no_address(customer, place_order, 
             ("5.00", 1, "5.00"),
         ]
         assert all(i["name"] and "colour" in i and "size" in i for i in event["items"])
+        # Clickstream counts purchases per product, so every line names its product.
+        assert sorted(i["product_id"] for i in event["items"]) == sorted(
+            str(pid) for pid in Order.objects.get(number=number).items.values_list("product_id", flat=True)
+        )

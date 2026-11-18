@@ -38,6 +38,7 @@ from .conftest import body_of
     ("/api/v1/inventory/stock/", "inventory"),
     ("/api/v1/search/products", "search"),
     ("/api/v1/search/suggest", "search"),
+    ("/api/v1/clickstream/events", "clickstream"),
 ])
 def test_each_path_goes_to_its_service_unchanged(gateway, services, path, service):
     response = gateway.get(path, params={"page": "2", "search": "desk lamp"})

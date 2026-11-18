@@ -567,6 +567,7 @@ services:
       PAYMENTS_SERVICE_URL: http://payments:8000
       INVENTORY_SERVICE_URL: http://inventory:8000
       SEARCH_SERVICE_URL: http://search:8000
+      CLICKSTREAM_SERVICE_URL: http://clickstream:8000
       STOREFRONT_URL: http://frontend:3000
       # Browsers connect straight to the gateway. Behind a cloud load balancer, set 1.
       TRUSTED_PROXY_HOPS: 0
@@ -593,6 +594,8 @@ services:
       inventory:
         condition: service_healthy
       search:
+        condition: service_healthy
+      clickstream:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -632,10 +635,59 @@ services:
     networks:
       - backend
 
+  clickstream:
+    build:
+      context: ./services/clickstream
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-clickstream
+    # Accepts storefront events (product views, searches, add-to-cart) and queues them on Kafka for Spark.
+    # It creates its own topic at start-up, because Kafka doesn't auto-create topics here.
+    environment:
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports:
+      - "${CLICKSTREAM_PORT:-8007}:8000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+
+  analytics-job:
+    build:
+      context: ./analytics
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-analytics-job
+    # Spark streaming job: reads the clickstream and order topics and writes Parquet to the analytics_data volume.
+    # No HTTP port.
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      ANALYTICS_OUTPUT_DIR: /data/analytics
+    volumes:
+      - analytics_data:/data/analytics
+    depends_on:
+      kafka:
+        condition: service_healthy
+      clickstream:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - backend
+
 volumes:
   postgres_data:
   redis_data:
   elasticsearch_data:
+  analytics_data:
 
 networks:
   backend:

@@ -51,6 +51,7 @@ def item_lines(order: Order) -> list[dict]:
     the order page shows it to the customer."""
     return [
         {
+            "product_id": str(item.product_id),
             "name": item.product_name,
             "colour": item.colour,
             "size": item.size,

@@ -67,3 +67,13 @@ def test_a_malformed_authorization_header_is_refused(gateway, services, header):
 
     assert response.status_code == 401
     assert services.received == []
+
+
+def test_analytics_passes_an_old_token_on_for_the_collector_to_judge(gateway, services):
+    token = make_token(expires_in=-10)
+
+    response = gateway.post("/api/v1/clickstream/events", json={"events": []}, headers=auth(token))
+
+    assert response.status_code == 200
+    assert services.last.url.host == "clickstream"
+    assert services.last.headers["authorization"] == f"Bearer {token}"

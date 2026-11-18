@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     payments_service_url: str = "http://localhost:8004"
     inventory_service_url: str = "http://localhost:8005"
     search_service_url: str = "http://localhost:8006"
+    clickstream_service_url: str = "http://localhost:8007"
     # Everything that isn't /api/... (pages, scripts, images) goes to the storefront.
     storefront_url: str = "http://localhost:3000"
 
@@ -62,6 +63,7 @@ class Settings(BaseSettings):
             "payments": self.payments_service_url.rstrip("/"),
             "inventory": self.inventory_service_url.rstrip("/"),
             "search": self.search_service_url.rstrip("/"),
+            "clickstream": self.clickstream_service_url.rstrip("/"),
             "storefront": self.storefront_url.rstrip("/"),
         }
 
