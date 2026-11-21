@@ -48,7 +48,7 @@ METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 REQUEST_ID = re.compile(r"[A-Za-z0-9._-]{8,64}")
 HEALTH_PATHS = {"users": "/health/", "products": "/health/", "orders": "/health/", "payments": "/health",
                 "inventory": "/health", "search": "/health", "clickstream": "/health",
-                "storefront": "/favicon.svg"}
+                "analytics": "/health", "storefront": "/favicon.svg"}
 # Fingerprinted build files: many per page load and never interesting in the log.
 QUIET_PATHS = ("/_next/static/", "/favicon.svg")
 

@@ -25,7 +25,7 @@ Every message is a JSON object with the same envelope:
 | Topic | Written by | Read by | Messages |
 |---|---|---|---|
 | `catalog.variants` | products | inventory | `VariantUpserted`, `VariantRemoved` |
-| `catalog.products` | products | search | `ProductUpserted`, `ProductRemoved` |
+| `catalog.products` | products | search, analytics (Spark) | `ProductUpserted`, `ProductRemoved` |
 | `inventory.commands` | orders | inventory | `ReserveStock`, `ReleaseStock`, `CommitStock` |
 | `inventory.events` | inventory | orders | `StockReserved`, `StockRejected`, `StockReleased`, `StockCommitted` |
 | `payments.commands` | orders | payments | `RefundPayment` |
@@ -96,6 +96,15 @@ The Spark job (`analytics/clickstream`) reads `clickstream.events` and `orders.e
 - `search_terms`: how often each search term was run in each window.
 
 A message the job can't read goes to `clickstream.events.dlq` with its original text, so nothing is dropped silently.
+
+## Seller analytics: catalogue and totals to Postgres
+
+The same job also reads `catalog.products`. Each `ProductUpserted` message says which seller owns the product, so the job knows whose product each storefront event belongs to. It writes two tables to `analytics_db` (schema in `infra/postgres/analytics/schema.sql`):
+
+- `product_listings`: one row per product (seller, name, slug, image). A row is replaced only by the same or a newer revision, so a late, older message never undoes a newer one.
+- `product_daily`: views, add-to-carts and units sold per product per UTC day. Spark sends a day's full totals each time they change, and the row is replaced, so replaying a batch leaves the same numbers.
+
+The `analytics-api` service reads these tables for `GET /api/v1/seller/analytics/?days=7` (or `30`). It answers only a signed-in seller's token, and every number is joined to that seller's listings. Its totals, daily series and product table never include another seller's products. Until the job has created the tables, it answers `503`.
 
 ## How a message gets out: the transactional outbox
 

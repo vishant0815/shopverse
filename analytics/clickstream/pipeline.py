@@ -1,8 +1,8 @@
-"""The streaming queries for the clickstream job.
+"""The streaming queries for the analytics job.
 
-build() takes the raw streams and returns the running queries. job.py feeds it Kafka streams;
-the tests feed it text files, so watermarks, de-duplication and windows are tested without a
-broker.
+build() takes the raw streams and returns the running queries. job.py feeds it Kafka streams and
+real sinks; the tests feed it text files and in-memory sinks, so watermarks, de-duplication and
+windows are tested without a broker or a database.
 
 Repeats are dropped by event id within the watermark. A message that is sent twice, such as a
 batch the collector asked the browser to resend, is counted once.
@@ -15,7 +15,16 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.streaming import StreamingQuery
 
-from .transforms import WATERMARK, activity, parse_clicks, parse_purchases, product_totals, search_terms
+from .transforms import (
+    WATERMARK,
+    activity,
+    parse_clicks,
+    parse_listings,
+    parse_purchases,
+    product_daily,
+    product_totals,
+    search_terms,
+)
 
 
 @dataclass(frozen=True)
@@ -31,15 +40,23 @@ class Outputs:
         return f"{self.root}/_checkpoints/{name}"
 
 
-# Starts a query that writes rejected messages somewhere they can be inspected.
-RejectWriter = Callable[[DataFrame, str], StreamingQuery]
+# Starts a query that writes one stream somewhere (Kafka, Postgres, or a test sink).
+SinkStarter = Callable[[DataFrame, str], StreamingQuery]
+
+
+@dataclass(frozen=True)
+class Sinks:
+    rejects: SinkStarter  # messages that couldn't be read, kept with their text
+    listings: SinkStarter  # product_listings: which seller owns each product
+    daily: SinkStarter  # product_daily: totals per product per day, rewritten as they change
 
 
 def build(
     clicks_raw: DataFrame,
     orders_raw: DataFrame,
+    products_raw: DataFrame,
     out: Outputs,
-    write_rejects: RejectWriter,
+    sinks: Sinks,
 ) -> list[StreamingQuery]:
     # With several watermarked inputs Spark's default ("min") waits for the slowest one. The
     # orders stream can go quiet for hours, which would hold every window open. "max" lets the
@@ -55,14 +72,17 @@ def build(
         .withWatermark("occurred_at", WATERMARK)
         .dropDuplicatesWithinWatermark(["event_id"])
     )
+    totals_source = activity(events, purchases)
 
     raw_events = events.withColumn("date", F.to_date("occurred_at")).withColumn("hour", F.hour("occurred_at"))
 
     return [
         _parquet(raw_events, out, "raw_events", partition_by=["date", "hour"]),
-        _parquet(product_totals(activity(events, purchases)), out, "product_totals"),
+        _parquet(product_totals(totals_source), out, "product_totals"),
         _parquet(search_terms(events), out, "search_terms"),
-        write_rejects(rejects, out.checkpoint("rejects")),
+        sinks.rejects(rejects, out.checkpoint("rejects")),
+        sinks.listings(parse_listings(products_raw), out.checkpoint("listings")),
+        sinks.daily(product_daily(totals_source), out.checkpoint("daily")),
     ]
 
 

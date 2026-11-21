@@ -1,8 +1,11 @@
-"""Runs the clickstream job: reads Kafka and writes Parquet to the analytics volume.
+"""Runs the analytics job: reads Kafka, writes Parquet to the analytics volume and writes the seller
+analytics tables to Postgres.
 
 Submitted with spark-submit (see the Dockerfile). Configuration comes from environment variables:
 - KAFKA_BOOTSTRAP_SERVERS: where the brokers are, e.g. kafka:9092
-- ANALYTICS_OUTPUT_DIR: where the tables and checkpoints go (default /data/analytics)
+- ANALYTICS_OUTPUT_DIR: where the Parquet tables and checkpoints go (default /data/analytics)
+- ANALYTICS_DATABASE_URL: the analytics database, e.g. postgresql://user:pass@postgres:5432/analytics
+- ANALYTICS_SCHEMA_PATH: the schema file applied on start (default /schema/schema.sql)
 """
 
 import os
@@ -10,10 +13,12 @@ import os
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.streaming import StreamingQuery
 
-from clickstream.pipeline import Outputs, build
+from clickstream.pipeline import Outputs, Sinks, build
+from clickstream.postgres import apply_schema, daily_sink, listing_sink
 
 CLICKSTREAM_TOPIC = "clickstream.events"
 ORDERS_TOPIC = "orders.events"
+PRODUCTS_TOPIC = "catalog.products"
 REJECTS_TOPIC = "clickstream.events.dlq"
 
 
@@ -44,15 +49,30 @@ def kafka_rejects(bootstrap: str):
 def main() -> None:
     bootstrap = os.environ["KAFKA_BOOTSTRAP_SERVERS"]
     root = os.environ.get("ANALYTICS_OUTPUT_DIR", "/data/analytics")
+    database_url = os.environ["ANALYTICS_DATABASE_URL"]
+    schema_path = os.environ.get("ANALYTICS_SCHEMA_PATH", "/schema/schema.sql")
 
-    spark = SparkSession.builder.appName("shopverse-clickstream").getOrCreate()
+    # The tables must exist before any query writes to them.
+    apply_schema(database_url, schema_path)
+
+    # Windows start at midnight UTC, so daily totals are per UTC day.
+    spark = (
+        SparkSession.builder.appName("shopverse-analytics")
+        .config("spark.sql.session.timeZone", "UTC")
+        .getOrCreate()
+    )
     spark.sparkContext.setLogLevel("WARN")
 
     build(
         kafka_stream(spark, bootstrap, CLICKSTREAM_TOPIC),
         kafka_stream(spark, bootstrap, ORDERS_TOPIC),
+        kafka_stream(spark, bootstrap, PRODUCTS_TOPIC),
         Outputs(root),
-        kafka_rejects(bootstrap),
+        Sinks(
+            rejects=kafka_rejects(bootstrap),
+            listings=listing_sink(database_url),
+            daily=daily_sink(database_url),
+        ),
     )
     spark.streams.awaitAnyTermination()
 

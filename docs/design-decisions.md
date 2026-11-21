@@ -315,3 +315,21 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 - Spark's default watermark rule waits for the slowest input, and the orders stream can go quiet for hours. The job uses the `max` policy so windows keep closing. A purchase that arrives more than ten minutes late is left out of the totals.
 - Visitors are tied together by an anonymous id in localStorage, not by an IP address. Nothing else about a visitor is collected: no IP address, user agent or full page URLs. The user id comes from the signed-in token, never from the request body.
 - The gateway lets clickstream requests through with an expired or broken token, so the collector can record them as anonymous. Every other route still refuses such a token at the gateway.
+
+## 029: Seller analytics are written to Postgres by Spark and read through a seller-only API
+
+**Decision:** The Spark job also reads `catalog.products` to learn which seller owns each product. It writes two tables to an `analytics_db` Postgres database: `product_listings` (one row per product, newest catalogue revision only) and `product_daily` (views, add-to-carts and units sold per product per UTC day). A small `analytics-api` service serves `GET /api/v1/seller/analytics/?days=7|30` to signed-in sellers. Every number it returns is joined to the seller's own listings. The job applies `infra/postgres/analytics/schema.sql` when it starts.
+
+**Why:**
+- **The seller comes from the catalogue, never from the event.** A storefront event carries only a product id, so Spark finds the owner in the catalogue's own messages. A shopper can't assign views to someone else's product.
+- **Postgres for the seller's reads, Spark for the writes.** The dashboard asks for one seller's products over a date range, which is a filtered lookup. The Parquet files would need a second query engine for that. Postgres is already in the stack.
+- **Upserts make replays safe.** Spark may run a batch again after a restart. Replacing a day's totals, and keeping only the newest listing revision, leaves the same numbers.
+- **The API checks the role itself.** It verifies the token with the shared key and requires the `seller` role. Sellers and customers are told apart by the service, not the gateway.
+
+**Trade-offs:**
+- The job writes to Postgres from its executors, one connection per partition. That is fine at this size. A much larger catalogue would need batching and a connection pool.
+- Totals are per UTC day. The dashboard says so.
+- The basket rate is add-to-cart events divided by product views. Units sold can't be matched to the view that led to them, so sales are not part of that rate.
+- Searches that led to a seller's products are not shown yet. A product view from search doesn't record which query it came from.
+- A `503` means the tables don't exist yet, because the job hasn't started. The API doesn't create them itself.
+- The `analytics_db` database is created by the Postgres init script only when its volume is empty. On an existing volume it has to be created by hand.

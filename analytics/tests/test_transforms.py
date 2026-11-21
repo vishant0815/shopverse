@@ -1,8 +1,18 @@
 import uuid
 
-from clickstream.transforms import activity, parse_clicks, parse_purchases, product_totals, search_terms
+from datetime import date
 
-from .conftest import click, order_confirmed, order_placed
+from clickstream.transforms import (
+    activity,
+    parse_clicks,
+    parse_listings,
+    parse_purchases,
+    product_daily,
+    product_totals,
+    search_terms,
+)
+
+from .conftest import click, order_confirmed, order_placed, product_upserted
 
 P1 = str(uuid.uuid4())
 P2 = str(uuid.uuid4())
@@ -59,6 +69,39 @@ def test_product_totals_count_views_carts_and_units_sold_per_five_minute_window(
     assert totals[("12:00", P2)]["views"] == 1
     assert totals[("12:05", P1)]["views"] == 1
     assert totals[("12:05", P1)]["units_sold"] == 0
+
+
+def test_product_daily_totals_each_utc_day_and_ignores_other_messages(spark):
+    clicks, _ = parse_clicks(messages(spark, [
+        click("2026-11-18T23:59:00Z", "product_view", product_id=P1, source="direct"),
+        click("2026-11-19T00:01:00Z", "product_view", product_id=P1, source="direct"),
+        click("2026-11-19T00:02:00Z", "add_to_cart", product_id=P1, variant_id=str(uuid.uuid4()), quantity=1),
+    ]))
+    purchases = parse_purchases(messages(spark, [order_confirmed("2026-11-19T00:03:00Z", [(P1, 4)])]))
+
+    daily = {
+        (str(r["product_id"]), r["day"]): r
+        for r in product_daily(activity(clicks, purchases)).collect()
+    }
+
+    assert (daily[(P1, date(2026, 11, 18))]["views"]) == 1
+    day_two = daily[(P1, date(2026, 11, 19))]
+    assert (day_two["views"], day_two["add_to_carts"], day_two["units_sold"]) == (1, 1, 4)
+
+
+def test_listings_keep_seller_name_and_revision_and_skip_other_catalogue_messages(spark):
+    seller = str(uuid.uuid4())
+    lines = [
+        product_upserted(P1, seller, "Desk Lamp", revision=3),
+        product_upserted(P2, seller, "Chair", revision=1).replace("ProductUpserted", "ProductRemoved"),
+        "not json",
+    ]
+
+    listings = parse_listings(messages(spark, lines)).collect()
+
+    assert [(str(r["product_id"]), str(r["seller_id"]), r["name"], r["slug"], r["revision"]) for r in listings] == [
+        (P1, seller, "Desk Lamp", "desk-lamp", 3),
+    ]
 
 
 def test_search_terms_ignore_case_and_spacing(spark):

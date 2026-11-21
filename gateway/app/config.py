@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     # Same key the users service signs tokens with; the gateway only verifies.
     jwt_signing_key: str = Field(min_length=1)
 
+    analytics_service_url: str = "http://localhost:8008"
     users_service_url: str = "http://localhost:8001"
     products_service_url: str = "http://localhost:8002"
     orders_service_url: str = "http://localhost:8003"
@@ -64,6 +65,7 @@ class Settings(BaseSettings):
             "inventory": self.inventory_service_url.rstrip("/"),
             "search": self.search_service_url.rstrip("/"),
             "clickstream": self.clickstream_service_url.rstrip("/"),
+            "analytics": self.analytics_service_url.rstrip("/"),
             "storefront": self.storefront_url.rstrip("/"),
         }
 

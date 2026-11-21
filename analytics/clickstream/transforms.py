@@ -3,10 +3,12 @@
 These are plain DataFrame functions with no Kafka in them, so they run the same way on a
 batch of test rows as on the live stream. pipeline.py wires them into streaming queries.
 
-Three tables come out:
-- raw events: every accepted storefront event, as received
-- product totals: views, add-to-carts and units sold per product in five-minute windows
-- search terms: how often each search term was run in each window
+Tables that come out:
+- raw events: every accepted storefront event, as received (Parquet)
+- product totals: views, add-to-carts and units sold per product in five-minute windows (Parquet)
+- search terms: how often each search term was run in each window (Parquet)
+- product listings: which seller owns each product, from the catalogue (Postgres)
+- product daily: views, add-to-carts and units sold per product per UTC day (Postgres)
 """
 
 from pyspark.sql import DataFrame
@@ -46,6 +48,41 @@ ENVELOPE_SCHEMA = StructType([
         ]))),
     ])),
 ])
+
+
+# The parts of a ProductUpserted message the listings table keeps (the product document in
+# services/products/catalog/events.py).
+PRODUCT_ENVELOPE_SCHEMA = StructType([
+    StructField("type", StringType()),
+    StructField("data", StructType([
+        StructField("product_id", StringType()),
+        StructField("seller_id", StringType()),
+        StructField("revision", IntegerType()),
+        StructField("name", StringType()),
+        StructField("slug", StringType()),
+        StructField("image_url", StringType()),
+    ])),
+])
+
+
+def parse_listings(raw: DataFrame) -> DataFrame:
+    """One row per product from ProductUpserted messages: its seller, name, slug and revision.
+
+    Other catalogue messages are skipped. Nothing is written for a message missing a field the
+    table needs; the catalogue sends every field, so that only happens for a broken message.
+    """
+    parsed = raw.select(F.from_json(F.col("value").cast("string"), PRODUCT_ENVELOPE_SCHEMA).alias("m"))
+    upserted = parsed.where(F.col("m.type") == "ProductUpserted").select("m.data.*")
+    complete = (
+        F.col("product_id").isNotNull()
+        & F.col("seller_id").isNotNull()
+        & F.col("revision").isNotNull()
+        & F.col("name").isNotNull()
+        & F.col("slug").isNotNull()
+    )
+    return upserted.where(complete).select(
+        "product_id", "seller_id", "name", "slug", F.coalesce("image_url", F.lit("")).alias("image_url"), "revision",
+    )
 
 
 def parse_clicks(raw: DataFrame) -> tuple[DataFrame, DataFrame]:
@@ -101,20 +138,35 @@ def activity(clicks: DataFrame, purchases: DataFrame) -> DataFrame:
     return views.unionByName(carts).unionByName(buys)
 
 
-def product_totals(activity_df: DataFrame) -> DataFrame:
-    """Per product and five-minute window: views, add-to-carts and units sold."""
+def _totals_by_window(activity_df: DataFrame, duration: str):
+    """Views, add-to-carts and units sold per product in windows of the given length."""
     return (
-        activity_df.groupBy(F.window("occurred_at", WINDOW).alias("w"), "product_id")
+        activity_df.groupBy(F.window("occurred_at", duration).alias("w"), "product_id")
         .agg(
             F.sum(F.when(F.col("kind") == "view", F.col("units")).otherwise(0)).alias("views"),
             F.sum(F.when(F.col("kind") == "cart", F.col("units")).otherwise(0)).alias("add_to_carts"),
             F.sum(F.when(F.col("kind") == "purchase", F.col("units")).otherwise(0)).alias("units_sold"),
         )
-        .select(
-            F.col("w.start").alias("window_start"),
-            F.col("w.end").alias("window_end"),
-            "product_id", "views", "add_to_carts", "units_sold",
-        )
+    )
+
+
+def product_totals(activity_df: DataFrame) -> DataFrame:
+    """Per product and five-minute window: views, add-to-carts and units sold."""
+    return _totals_by_window(activity_df, WINDOW).select(
+        F.col("w.start").alias("window_start"),
+        F.col("w.end").alias("window_end"),
+        "product_id", "views", "add_to_carts", "units_sold",
+    )
+
+
+def product_daily(activity_df: DataFrame) -> DataFrame:
+    """Per product and UTC day: views, add-to-carts and units sold. The seller analytics read these.
+
+    Windows start at midnight UTC because the session time zone is UTC (see job.py).
+    """
+    return _totals_by_window(activity_df, "1 day").select(
+        F.to_date(F.col("w.start")).alias("day"),
+        "product_id", "views", "add_to_carts", "units_sold",
     )
 
 

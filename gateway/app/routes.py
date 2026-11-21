@@ -46,6 +46,8 @@ ROUTES = [
     Route("/api/v1/search/", "search"),
     # Storefront events for analytics. Anonymous shoppers can send them; a signed-in token is read by the collector.
     Route("/api/v1/clickstream/", "clickstream"),
+    # The seller dashboard's numbers. The analytics service checks the token is a seller's.
+    Route("/api/v1/seller/analytics/", "analytics"),
     Route("/api/v1/webhooks/", "payments"),
     # The checkout page asks this to find out which payment provider is switched on.
     Route("/api/payments-health", "payments", rewrite_to="/health"),
