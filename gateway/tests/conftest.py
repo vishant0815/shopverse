@@ -32,6 +32,7 @@ BASE_SETTINGS = {
     "inventory_service_url": "http://inventory:8000",
     "search_service_url": "http://search:8000",
     "clickstream_service_url": "http://clickstream:8000",
+    "analytics_service_url": "http://analytics:8000",
     "storefront_url": "http://storefront:3000",
     "trusted_proxy_hops": 0,
 }

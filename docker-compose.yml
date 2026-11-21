@@ -568,6 +568,7 @@ services:
       INVENTORY_SERVICE_URL: http://inventory:8000
       SEARCH_SERVICE_URL: http://search:8000
       CLICKSTREAM_SERVICE_URL: http://clickstream:8000
+      ANALYTICS_SERVICE_URL: http://analytics:8000
       STOREFRONT_URL: http://frontend:3000
       # Browsers connect straight to the gateway. Behind a cloud load balancer, set 1.
       TRUSTED_PROXY_HOPS: 0
@@ -596,6 +597,8 @@ services:
       search:
         condition: service_healthy
       clickstream:
+        condition: service_healthy
+      analytics:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -661,23 +664,53 @@ services:
     networks:
       - backend
 
+  analytics:
+    build:
+      context: ./services/analytics-api
+      args:
+        INSTALL_DEV: "true"
+    container_name: shopverse-analytics-api
+    # Seller dashboard numbers. Reads the tables the analytics job writes to Postgres.
+    environment:
+      JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/analytics_db
+    ports:
+      - "${ANALYTICS_PORT:-8008}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - backend
+
   analytics-job:
     build:
       context: ./analytics
       args:
         INSTALL_DEV: "true"
     container_name: shopverse-analytics-job
-    # Spark streaming job: reads the clickstream and order topics and writes Parquet to the analytics_data volume.
-    # No HTTP port.
+    # Spark streaming job: reads the clickstream, order and catalogue topics. Writes Parquet to the
+    # analytics_data volume and the seller tables to analytics_db. No HTTP port.
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       ANALYTICS_OUTPUT_DIR: /data/analytics
+      ANALYTICS_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/analytics_db
+      ANALYTICS_SCHEMA_PATH: /schema/schema.sql
     volumes:
       - analytics_data:/data/analytics
+      - ./infra/postgres/analytics:/schema:ro
     depends_on:
       kafka:
         condition: service_healthy
       clickstream:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     restart: unless-stopped
     networks:

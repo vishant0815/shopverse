@@ -109,7 +109,8 @@ flowchart TB
 | `search` | Full-text search, filters, autosuggest | FastAPI + Elasticsearch |
 | `inventory` | Stock levels, reservations, flash-sale protection | FastAPI + SQLAlchemy |
 | `notifications` | Order and payment emails, consuming Kafka events | Python Kafka consumer |
-| `analytics` | Recommendations and seller sales reports | Spark |
+| `analytics` | Spark job: storefront events, product totals and the seller tables | Spark + Postgres |
+| `analytics-api` | Seller dashboard numbers, read from Postgres (sellers only) | FastAPI + Postgres |
 
 ---
 

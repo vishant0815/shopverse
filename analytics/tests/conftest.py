@@ -54,3 +54,24 @@ def order_confirmed(at: str, items: list[tuple[str, int]], event_id=None) -> str
 def order_placed(at: str, items: list[tuple[str, int]]) -> str:
     """A message on the same topic that the job must ignore."""
     return order_confirmed(at, items).replace("OrderConfirmed", "OrderPlaced")
+
+
+def product_upserted(product_id: str, seller_id: str, name: str, revision: int = 1) -> str:
+    """A ProductUpserted message from the catalogue (its outbox envelope around the product document)."""
+    return json.dumps({
+        "id": str(uuid.uuid4()),
+        "type": "ProductUpserted",
+        "source": "products",
+        "occurred_at": "2026-11-18T09:00:00.000Z",
+        "key": product_id,
+        "data": {
+            "product_id": product_id,
+            "revision": revision,
+            "listed": True,
+            "seller_id": seller_id,
+            "slug": name.lower().replace(" ", "-"),
+            "name": name,
+            "image_url": "",
+            "status": "active",
+        },
+    })
