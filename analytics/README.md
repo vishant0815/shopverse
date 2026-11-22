@@ -20,14 +20,16 @@ Postgres, in `analytics_db` (`ANALYTICS_DATABASE_URL`; schema in `infra/postgres
 |---|---|
 | `product_listings` | One product: its seller, name, slug and image. The newest catalogue revision wins. |
 | `product_daily` | One product on one UTC day: `views`, `add_to_carts`, `units_sold`. Rewritten as the day's totals change. |
+| `product_pairs` | Two products and how many confirmed orders held both, in each direction. A running total, rewritten every three minutes. |
 
-The `analytics-api` service (`services/analytics-api`) reads the Postgres tables for the seller dashboard. See decision 029.
+The `analytics-api` service (`services/analytics-api`) reads the Postgres tables for the seller dashboard and for the storefront's "frequently bought together" block. See decisions 029 and 030.
 
 - Repeats are dropped by `event_id` within a ten-minute watermark.
 - Purchases are the items of `OrderConfirmed` events. Other order events are ignored.
 - A message that can't be read as an event goes to `clickstream.events.dlq`, with its original text.
 - The job uses Spark's `max` watermark policy, so one quiet input doesn't hold every window open. See decision 028.
 - Every write is an upsert, so a batch replayed after a restart leaves the same numbers.
+- An order is de-duplicated as a whole and then split into its items. Splitting first gave every item the same event id, so the de-duplication kept one item per order and undercounted units sold.
 
 Files: `transforms.py` (the DataFrame logic, no Kafka), `pipeline.py` (the streaming queries, no Kafka or database), `postgres.py` (the upserts into Postgres), `job.py` (Kafka in, Postgres and Kafka out, run by `spark-submit`).
 

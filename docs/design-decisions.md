@@ -333,3 +333,20 @@ A record of the main architecture choices in Shopverse and the reasons behind th
 - Searches that led to a seller's products are not shown yet. A product view from search doesn't record which query it came from.
 - A `503` means the tables don't exist yet, because the job hasn't started. The API doesn't create them itself.
 - The `analytics_db` database is created by the Postgres init script only when its volume is empty. On an existing volume it has to be created by hand.
+
+## 030: Frequently bought together is counted by Spark and read through an anonymous API
+
+**Decision:** The Spark job counts how many confirmed orders held each two products. An order's distinct products make pairs, counted in both directions, in a `product_pairs` table in `analytics_db`. The table holds running totals and is rewritten every three minutes. The `analytics-api` service serves `GET /api/v1/recommendations/products/{product_id}/bought-together` without a token. It returns up to three products that share at least two orders with the given one, and the product page shows them.
+
+**Why:**
+- **Orders are the unit of counting.** A pair means two products were in the same confirmed order. Confirmed orders are paid ones, so the counts reflect purchases, not carts.
+- **Both directions in one table.** One lookup by product id returns its pairs, with an index for the highest counts first. No join and no second query.
+- **Running totals are safe to replay.** As with the daily totals (decision 029), each row is replaced by the new count, so a batch run again after a restart leaves the same numbers.
+- **Refreshing every few minutes is fresh enough.** Suggestions don't need to change with every order, and a fixed refresh keeps the Postgres writes few and steady.
+- **The threshold filters coincidence.** A pair seen in one order is often chance. Requiring two orders keeps the block to products that really sell together.
+
+**Trade-offs:**
+- The job keeps a running count for every pair it has seen. The number of pairs grows with the square of the items in each order. That is fine at this size. A larger catalogue would need a time window or a batch job.
+- The job reads `orders.events` from the earliest message the topic still holds, so the counts cover whatever the topic retains. Orders older than the retention are not counted.
+- A new product has no suggestions until it has sold alongside others, and a bestseller pairs with many products. The rule looks only at orders, not at how often each product sells alone.
+- The read is anonymous and cached for two minutes, so shoppers see suggestions a few minutes behind the latest orders.

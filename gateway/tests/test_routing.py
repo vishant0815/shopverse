@@ -40,6 +40,7 @@ from .conftest import body_of
     ("/api/v1/search/suggest", "search"),
     ("/api/v1/clickstream/events", "clickstream"),
     ("/api/v1/seller/analytics/", "analytics"),
+    ("/api/v1/recommendations/products/00000000-0000-4000-8000-000000000001/bought-together", "analytics"),
     ("/api/v1/seller/sales/", "orders"),
 ])
 def test_each_path_goes_to_its_service_unchanged(gateway, services, path, service):

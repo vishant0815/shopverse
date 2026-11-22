@@ -29,7 +29,7 @@ SCHEMA = Path(__file__).resolve().parents[3] / "infra" / "postgres" / "analytics
 def db() -> str:
     with psycopg.connect(TEST_DATABASE_URL, autocommit=True) as conn:
         conn.execute(SCHEMA.read_text(encoding="utf-8"))
-        conn.execute("TRUNCATE product_listings, product_daily")
+        conn.execute("TRUNCATE product_listings, product_daily, product_pairs")
     return TEST_DATABASE_URL
 
 

@@ -9,6 +9,7 @@ Tables that come out:
 - search terms: how often each search term was run in each window (Parquet)
 - product listings: which seller owns each product, from the catalogue (Postgres)
 - product daily: views, add-to-carts and units sold per product per UTC day (Postgres)
+- product pairs: how many confirmed orders each two products shared, in both directions (Postgres)
 """
 
 from pyspark.sql import DataFrame
@@ -109,8 +110,8 @@ def parse_clicks(raw: DataFrame) -> tuple[DataFrame, DataFrame]:
     return events, rejects
 
 
-def parse_purchases(raw: DataFrame) -> DataFrame:
-    """One row per item of each confirmed order (a payment has gone through).
+def parse_orders(raw: DataFrame) -> DataFrame:
+    """One row per confirmed order (a payment has gone through), with its item lines.
 
     The order events are shared with other consumers, so everything except OrderConfirmed is
     skipped here.
@@ -120,8 +121,54 @@ def parse_purchases(raw: DataFrame) -> DataFrame:
     return confirmed.select(
         F.col("m.id").alias("event_id"),
         F.to_timestamp("m.occurred_at").alias("occurred_at"),
-        F.explode("m.data.items").alias("item"),
-    ).select("event_id", "occurred_at", F.col("item.product_id"), F.col("item.quantity"))
+        F.col("m.data.items").alias("items"),
+    )
+
+
+def purchase_lines(orders: DataFrame) -> DataFrame:
+    """One row per item of each order. Every item keeps the order's event id."""
+    return orders.select("event_id", "occurred_at", F.explode("items").alias("item")).select(
+        "event_id", "occurred_at", F.col("item.product_id"), F.col("item.quantity"),
+    )
+
+
+def parse_purchases(raw: DataFrame) -> DataFrame:
+    """One row per item of each confirmed order. See parse_orders and purchase_lines."""
+    return purchase_lines(parse_orders(raw))
+
+
+# For one order's sorted, distinct product ids (the column `ids`), every pair of them with the
+# first before the second. Each pair becomes one struct; flatten joins them into one array.
+PAIRS_EXPR = (
+    "flatten(transform(ids, (a, i) -> "
+    "transform(slice(ids, i + 2, size(ids)), b -> struct(a AS product_id, b AS related_id))))"
+)
+
+
+def co_purchases(orders: DataFrame) -> DataFrame:
+    """Each two products in an order, once in each direction as (product_id, related_id).
+
+    An order with one product, or none, makes no pairs. A product listed twice in one order counts once.
+    """
+    with_ids = orders.select(
+        "event_id",
+        F.array_sort(F.array_distinct(F.transform("items", lambda item: item.product_id))).alias("ids"),
+    )
+    pairs = with_ids.select("event_id", F.explode(F.expr(PAIRS_EXPR)).alias("pair")).select(
+        "event_id", F.col("pair.product_id"), F.col("pair.related_id"),
+    )
+    reverse = pairs.select(
+        "event_id", F.col("related_id").alias("product_id"), F.col("product_id").alias("related_id"),
+    )
+    return pairs.unionByName(reverse)
+
+
+def pair_counts(orders: DataFrame) -> DataFrame:
+    """How many confirmed orders each product shared with each other product, in both directions.
+
+    These are running totals over the whole stream, so the table is rewritten as they change.
+    """
+    return co_purchases(orders).groupBy("product_id", "related_id").agg(F.count("*").alias("shared_orders"))
 
 
 def activity(clicks: DataFrame, purchases: DataFrame) -> DataFrame:

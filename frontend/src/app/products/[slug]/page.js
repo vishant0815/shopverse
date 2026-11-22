@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import AddToBasket from "@/components/AddToBasket";
 import { TrackProductView } from "@/components/Analytics";
+import FrequentlyBoughtTogether from "@/components/FrequentlyBoughtTogether";
 import ProductReviews from "@/components/ProductReviews";
 import CatalogueUnavailable from "@/components/CatalogueUnavailable";
 import { CatalogueDown, getAvailability, getProduct } from "@/lib/catalog-server";
@@ -74,6 +75,8 @@ export default async function ProductPage({ params }) {
           )}
         </div>
       </div>
+
+      <FrequentlyBoughtTogether productId={product.id} />
 
       <div className="mt-16">
         <ProductReviews slug={product.slug} productName={product.name} />

@@ -106,6 +106,10 @@ The same job also reads `catalog.products`. Each `ProductUpserted` message says 
 
 The `analytics-api` service reads these tables for `GET /api/v1/seller/analytics/?days=7` (or `30`). It answers only a signed-in seller's token, and every number is joined to that seller's listings. Its totals, daily series and product table never include another seller's products. Until the job has created the tables, it answers `503`.
 
+## Frequently bought together: orders to Postgres
+
+The job counts how many confirmed orders each two products shared. Each `OrderConfirmed` is one order; its distinct products make pairs, and each pair is counted in both directions, so one lookup by product returns its pairs. The result is `product_pairs` in `analytics_db`: a running total per pair, rewritten every three minutes. The `analytics-api` service reads it at `GET /api/v1/recommendations/products/{product_id}/bought-together`, with no token needed, and returns up to three products that were in at least two orders with it. The product page shows them as "Frequently bought together", and the answer may be cached for two minutes. See decision 030.
+
 ## How a message gets out: the transactional outbox
 
 A service never writes to its database and then sends to Kafka as two separate steps. If it crashed between them, the database and the rest of the system would disagree. Instead, the message is written to an `outbox` table **in the same database transaction** as the change it describes. A relay in the service's worker reads unsent rows, publishes them, and marks them sent.
