@@ -14,7 +14,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.streaming import StreamingQuery
 
 from clickstream.pipeline import Outputs, Sinks, build
-from clickstream.postgres import apply_schema, daily_sink, listing_sink
+from clickstream.postgres import apply_schema, daily_sink, listing_sink, pairs_sink
 
 CLICKSTREAM_TOPIC = "clickstream.events"
 ORDERS_TOPIC = "orders.events"
@@ -72,6 +72,7 @@ def main() -> None:
             rejects=kafka_rejects(bootstrap),
             listings=listing_sink(database_url),
             daily=daily_sink(database_url),
+            pairs=pairs_sink(database_url),
         ),
     )
     spark.streams.awaitAnyTermination()

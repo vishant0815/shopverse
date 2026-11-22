@@ -4,11 +4,15 @@ from datetime import date
 
 from clickstream.transforms import (
     activity,
+    co_purchases,
+    pair_counts,
     parse_clicks,
     parse_listings,
+    parse_orders,
     parse_purchases,
     product_daily,
     product_totals,
+    purchase_lines,
     search_terms,
 )
 
@@ -16,6 +20,7 @@ from .conftest import click, order_confirmed, order_placed, product_upserted
 
 P1 = str(uuid.uuid4())
 P2 = str(uuid.uuid4())
+P3 = str(uuid.uuid4())
 T0 = "2026-11-18T12:00:00Z"
 
 
@@ -115,3 +120,36 @@ def test_search_terms_ignore_case_and_spacing(spark):
     counts = {r["term"]: r["searches"] for r in search_terms(events).collect()}
 
     assert counts == {"desk lamp": 2, "chair": 1}
+
+
+def test_each_item_of_a_multi_item_order_is_a_purchase_line(spark):
+    orders = parse_orders(messages(spark, [order_confirmed(T0, [(P1, 1), (P2, 2), (P3, 3)])]))
+
+    rows = sorted((r["product_id"], r["quantity"]) for r in purchase_lines(orders).collect())
+
+    assert rows == sorted([(P1, 1), (P2, 2), (P3, 3)])
+
+
+def test_co_purchases_pair_the_products_of_an_order_in_both_directions_once(spark):
+    lines = [
+        order_confirmed(T0, [(P1, 1), (P2, 2), (P1, 3)]),  # P1 twice in one order still makes one pair
+        order_confirmed(T0, [(P3, 1)]),  # a single product makes no pair
+    ]
+
+    pairs = co_purchases(parse_orders(messages(spark, lines)))
+
+    assert sorted((r["product_id"], r["related_id"]) for r in pairs.collect()) == sorted([(P1, P2), (P2, P1)])
+
+
+def test_pair_counts_say_how_many_orders_each_two_products_shared(spark):
+    lines = [
+        order_confirmed(T0, [(P1, 1), (P2, 1)]),
+        order_confirmed("2026-11-18T12:30:00Z", [(P1, 2), (P2, 1), (P3, 1)]),
+    ]
+
+    counts = {
+        (r["product_id"], r["related_id"]): r["shared_orders"]
+        for r in pair_counts(parse_orders(messages(spark, lines))).collect()
+    }
+
+    assert counts == {(P1, P2): 2, (P2, P1): 2, (P1, P3): 1, (P3, P1): 1, (P2, P3): 1, (P3, P2): 1}

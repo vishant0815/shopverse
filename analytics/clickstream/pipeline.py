@@ -18,11 +18,13 @@ from pyspark.sql.streaming import StreamingQuery
 from .transforms import (
     WATERMARK,
     activity,
+    pair_counts,
     parse_clicks,
     parse_listings,
-    parse_purchases,
+    parse_orders,
     product_daily,
     product_totals,
+    purchase_lines,
     search_terms,
 )
 
@@ -49,6 +51,7 @@ class Sinks:
     rejects: SinkStarter  # messages that couldn't be read, kept with their text
     listings: SinkStarter  # product_listings: which seller owns each product
     daily: SinkStarter  # product_daily: totals per product per day, rewritten as they change
+    pairs: SinkStarter  # product_pairs: how many orders each two products shared, rewritten as they change
 
 
 def build(
@@ -67,12 +70,10 @@ def build(
     events, rejects = parse_clicks(clicks_raw)
     events = events.withWatermark("occurred_at", WATERMARK).dropDuplicatesWithinWatermark(["event_id"])
 
-    purchases = (
-        parse_purchases(orders_raw)
-        .withWatermark("occurred_at", WATERMARK)
-        .dropDuplicatesWithinWatermark(["event_id"])
-    )
-    totals_source = activity(events, purchases)
+    # Orders are de-duplicated as whole orders, then split into items. Splitting first would give
+    # every item of an order the same event id, and the de-duplication would keep only one item.
+    orders = parse_orders(orders_raw).withWatermark("occurred_at", WATERMARK).dropDuplicatesWithinWatermark(["event_id"])
+    totals_source = activity(events, purchase_lines(orders))
 
     raw_events = events.withColumn("date", F.to_date("occurred_at")).withColumn("hour", F.hour("occurred_at"))
 
@@ -83,6 +84,7 @@ def build(
         sinks.rejects(rejects, out.checkpoint("rejects")),
         sinks.listings(parse_listings(products_raw), out.checkpoint("listings")),
         sinks.daily(product_daily(totals_source), out.checkpoint("daily")),
+        sinks.pairs(pair_counts(orders), out.checkpoint("pairs")),
     ]
 
 

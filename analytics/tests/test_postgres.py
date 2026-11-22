@@ -18,9 +18,12 @@ from clickstream.postgres import (
     DAILY_UPSERT,
     LISTING_COLUMNS,
     LISTING_UPSERT,
+    PAIR_COLUMNS,
+    PAIR_UPSERT,
     apply_schema,
     daily_sink,
     listing_sink,
+    pairs_sink,
     write_rows,
 )
 
@@ -38,7 +41,7 @@ pytestmark = pytest.mark.skipif(
 def db():
     apply_schema(DATABASE_URL, str(SCHEMA))
     with psycopg.connect(DATABASE_URL, autocommit=True) as conn:
-        conn.execute("TRUNCATE product_listings, product_daily")
+        conn.execute("TRUNCATE product_listings, product_daily, product_pairs")
     return DATABASE_URL
 
 
@@ -54,6 +57,10 @@ def daily(product_id, views, carts, sold, day=date(2026, 11, 18)):
         "product_id": product_id, "day": day, "views": views,
         "add_to_carts": carts, "units_sold": sold,
     }
+
+
+def pair(product_id, related_id, shared_orders):
+    return {"product_id": product_id, "related_id": related_id, "shared_orders": shared_orders}
 
 
 def fetch(url, sql):
@@ -85,6 +92,16 @@ def test_daily_totals_are_replaced_so_running_a_batch_again_changes_nothing(db):
     assert fetch(db, "SELECT views, add_to_carts, units_sold FROM product_daily") == [(5, 2, 1)]
 
 
+def test_pair_counts_are_replaced_by_the_running_total(db):
+    product, related = str(uuid.uuid4()), str(uuid.uuid4())
+
+    write_rows(db, PAIR_UPSERT, PAIR_COLUMNS, [pair(product, related, 1)])
+    write_rows(db, PAIR_UPSERT, PAIR_COLUMNS, [pair(product, related, 3)])
+    write_rows(db, PAIR_UPSERT, PAIR_COLUMNS, [pair(product, related, 3)])
+
+    assert fetch(db, "SELECT shared_orders FROM product_pairs") == [(3,)]
+
+
 def test_a_partition_with_no_rows_writes_nothing(db):
     write_rows(db, DAILY_UPSERT, DAILY_COLUMNS, [])
 
@@ -109,7 +126,8 @@ def test_the_spark_job_writes_listings_and_daily_totals_to_postgres(spark, tmp_p
         spark.readStream.text(str(orders_dir)),
         spark.readStream.text(str(products_dir)),
         Outputs(str(tmp_path / "out")),
-        Sinks(rejects=write_rejects, listings=listing_sink(db), daily=daily_sink(db)),
+        # refresh=None: run each batch as soon as it is ready, so the test doesn't wait for the 3-minute refresh.
+        Sinks(rejects=write_rejects, listings=listing_sink(db), daily=daily_sink(db), pairs=pairs_sink(db, refresh=None)),
     )
     try:
         (products_dir / "a.txt").write_text(product_upserted(product, seller, "Desk Lamp", revision=2) + "\n")

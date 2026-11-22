@@ -1,7 +1,6 @@
 """The seller analytics endpoint."""
 
 import uuid
-from collections.abc import Iterator
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -9,19 +8,10 @@ import psycopg
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from .auth import seller_id
-from .config import get_settings
+from .db import get_connection
 from .queries import seller_summary, window
 
 router = APIRouter(prefix="/api/v1/seller/analytics", tags=["seller analytics"])
-
-
-def get_connection() -> Iterator[psycopg.Connection]:
-    # Reads only, so each statement commits by itself and nothing is held open between requests.
-    conn = psycopg.connect(get_settings().database_url, autocommit=True)
-    try:
-        yield conn
-    finally:
-        conn.close()
 
 
 @router.get("/")

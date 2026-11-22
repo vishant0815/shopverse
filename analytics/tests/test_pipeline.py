@@ -53,7 +53,7 @@ def test_each_event_is_counted_once_and_windows_are_totalled(spark, tmp_path):
             .start()
         )
 
-    listings, daily = [], []
+    listings, daily, pairs = [], [], []
     queries = build(
         spark.readStream.text(str(clicks_dir)),
         spark.readStream.text(str(orders_dir)),
@@ -63,6 +63,7 @@ def test_each_event_is_counted_once_and_windows_are_totalled(spark, tmp_path):
             rejects=write_rejects,
             listings=keeping_sink(listings, "append"),
             daily=keeping_sink(daily, "update"),
+            pairs=keeping_sink(pairs, "update"),
         ),
     )
     try:
@@ -115,3 +116,52 @@ def test_each_event_is_counted_once_and_windows_are_totalled(spark, tmp_path):
         latest[(str(row["product_id"]), row["day"])] = row
     day_p1 = latest[(P1, date(2026, 11, 18))]
     assert (day_p1["views"], day_p1["add_to_carts"], day_p1["units_sold"]) == (1, 2, 1)
+
+    # That order had one product, so it pairs with nothing.
+    assert pairs == []
+
+
+def test_an_order_with_several_items_counts_every_item_and_pairs_its_products(spark, tmp_path):
+    """Each item of a confirmed order is a sale, and each two products in the order are bought together once."""
+    clicks_dir, orders_dir, products_dir = tmp_path / "clicks", tmp_path / "orders", tmp_path / "products"
+    for directory in (clicks_dir, orders_dir, products_dir):
+        directory.mkdir()
+    daily, pairs = [], []
+
+    def write_rejects(rejects, checkpoint):
+        return (
+            rejects.selectExpr("raw AS value").writeStream.format("text").outputMode("append")
+            .option("checkpointLocation", checkpoint).option("path", str(tmp_path / "rejects")).start()
+        )
+
+    queries = build(
+        spark.readStream.text(str(clicks_dir)),
+        spark.readStream.text(str(orders_dir)),
+        spark.readStream.text(str(products_dir)),
+        Outputs(str(tmp_path / "out")),
+        Sinks(
+            rejects=write_rejects,
+            listings=keeping_sink([], "append"),
+            daily=keeping_sink(daily, "update"),
+            pairs=keeping_sink(pairs, "update"),
+        ),
+    )
+    try:
+        write_round(orders_dir, "a.txt", [order_confirmed("2026-11-18T12:03:45Z", [(P1, 1), (P2, 2)])])
+        run_round(queries)
+        write_round(clicks_dir, "a.txt", [click("2026-11-18T13:00:00Z", "product_view", product_id=P2, source="direct")])
+        run_round(queries)
+    finally:
+        for query in queries:
+            query.stop()
+
+    latest = {}
+    for row in daily:
+        latest[(str(row["product_id"]), row["day"])] = row
+    assert latest[(P1, date(2026, 11, 18))]["units_sold"] == 1
+    assert latest[(P2, date(2026, 11, 18))]["units_sold"] == 2
+
+    counts = {}
+    for row in pairs:
+        counts[(str(row["product_id"]), str(row["related_id"]))] = row["shared_orders"]
+    assert counts == {(P1, P2): 1, (P2, P1): 1}

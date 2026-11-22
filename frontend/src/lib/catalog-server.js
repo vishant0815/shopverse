@@ -3,10 +3,12 @@
 import "server-only";
 
 import { normalizeSearch } from "./search-model";
+import { visibleRecommendations } from "./recommendations";
 
 const PRODUCTS = process.env.PRODUCTS_API_URL || "http://localhost:8002";
 const INVENTORY = process.env.INVENTORY_API_URL || "http://localhost:8005";
 const SEARCH = process.env.SEARCH_API_URL || "http://localhost:8006";
+const ANALYTICS = process.env.ANALYTICS_API_URL || "http://localhost:8008";
 
 export class CatalogueDown extends Error {}
 
@@ -51,6 +53,22 @@ export function getProducts(params = {}) {
 
 export function getProduct(slug) {
   return get(`products/${encodeURIComponent(slug)}/`, { revalidate: 30 });
+}
+
+// Products shoppers often bought in the same order as this one. The analytics job refreshes them every
+// few minutes, so a page may be up to two minutes behind. If the service is unreachable, the block is
+// left out rather than failing the product page.
+export async function getBoughtTogether(productId) {
+  try {
+    const response = await fetch(
+      `${ANALYTICS}/api/v1/recommendations/products/${encodeURIComponent(productId)}/bought-together`,
+      { next: { revalidate: 120 } },
+    );
+    if (!response.ok) return [];
+    return visibleRecommendations(await response.json());
+  } catch {
+    return [];
+  }
 }
 
 // How many of each variant can be bought right now: { [variantId]: available }.

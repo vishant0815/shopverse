@@ -1,6 +1,6 @@
 # Analytics API
 
-Serves the seller dashboard's numbers: product views, add-to-carts and units sold, by day and by product. It reads the tables the Spark job writes to Postgres (see `analytics/README.md` and decision 029). It has no writes and no Kafka.
+Serves two things, both read from the tables the Spark job writes to Postgres (see `analytics/README.md` and decisions 029 and 030). The first is the seller dashboard's numbers: product views, add-to-carts and units sold, by day and by product. The second is the storefront's "frequently bought together" recommendations. It has no writes and no Kafka.
 
 ## Endpoint
 
@@ -23,6 +23,15 @@ Example response, abridged:
   "products": [{"product_id": "…", "name": "Desk Lamp", "slug": "desk-lamp", "image_url": "", "views": 80, "add_to_carts": 9, "units_sold": 6}]
 }
 ```
+
+## Recommendations
+
+`GET /api/v1/recommendations/products/{product_id}/bought-together`. Anyone can call it, with or without a token. The gateway forwards it at the same path.
+
+- It returns `{"product_id": ..., "items": [...]}`, with up to three products that were in at least two confirmed orders with this one, most shared first.
+- Each item has `product_id`, `name`, `slug` and `image_url`. A product without a listing is left out.
+- The answer carries `Cache-Control: public, max-age=120`, because the job refreshes the pairs every few minutes.
+- A malformed id gets `422`. `503` means the pairs table doesn't exist yet.
 
 ## Configuration
 

@@ -39,6 +39,21 @@ DAILY_UPSERT = """
 """
 
 
+# product_pairs: the running count of orders that held both products. Spark sends the whole count,
+# so the row is replaced, never added to.
+PAIR_COLUMNS = ["product_id", "related_id", "shared_orders"]
+PAIR_UPSERT = """
+    INSERT INTO product_pairs (product_id, related_id, shared_orders)
+    VALUES (%s, %s, %s)
+    ON CONFLICT (product_id, related_id) DO UPDATE SET
+        shared_orders = EXCLUDED.shared_orders,
+        updated_at = now()
+"""
+
+# How often the pairs table is refreshed. A few minutes is fresh enough for "bought together".
+PAIRS_REFRESH = "3 minutes"
+
+
 def apply_schema(database_url: str, path: str) -> None:
     """Creates the tables from the schema file. Every statement uses IF NOT EXISTS, so this is safe on each start."""
     with open(path, encoding="utf-8") as file:
@@ -57,14 +72,15 @@ def write_rows(database_url: str, sql: str, columns: list[str], rows) -> None:
             cursor.executemany(sql, batch)
 
 
-def _sink(database_url: str, sql: str, columns: list[str], output_mode: str) -> SinkStarter:
+def _sink(database_url: str, sql: str, columns: list[str], output_mode: str, refresh: str | None = None) -> SinkStarter:
     def start(df: DataFrame, checkpoint: str):
         def write_batch(batch: DataFrame, batch_id: int) -> None:
             batch.select(*columns).foreachPartition(partial(write_rows, database_url, sql, columns))
 
-        return df.writeStream.outputMode(output_mode).option("checkpointLocation", checkpoint).foreachBatch(
-            write_batch
-        ).start()
+        writer = df.writeStream.outputMode(output_mode).option("checkpointLocation", checkpoint)
+        if refresh:
+            writer = writer.trigger(processingTime=refresh)
+        return writer.foreachBatch(write_batch).start()
 
     return start
 
@@ -77,3 +93,11 @@ def listing_sink(database_url: str) -> SinkStarter:
 def daily_sink(database_url: str) -> SinkStarter:
     """product_daily. Update mode sends only the days whose totals changed."""
     return _sink(database_url, DAILY_UPSERT, DAILY_COLUMNS, "update")
+
+
+def pairs_sink(database_url: str, refresh: str | None = PAIRS_REFRESH) -> SinkStarter:
+    """product_pairs. Update mode sends only the pairs whose count changed, once per refresh.
+
+    Tests pass refresh=None to run each batch as soon as it is ready.
+    """
+    return _sink(database_url, PAIR_UPSERT, PAIR_COLUMNS, "update", refresh=refresh)
