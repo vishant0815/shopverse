@@ -1,0 +1,6 @@
+# The local kind cluster. Nothing here is specific to kind yet; it is a separate overlay so that a real
+# cluster can get its own storage sizes and replica counts later without touching the base.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
