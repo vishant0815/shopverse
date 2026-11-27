@@ -1,0 +1,98 @@
+# Notifications worker (sends the customer emails) and Mailpit, the development mail catcher it sends
+# to. Mailpit keeps everything in memory and delivers nothing to a real address. Use a real SMTP host
+# for anything beyond a local cluster.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifications-worker
+  labels:
+    app: notifications-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notifications-worker
+  template:
+    metadata:
+      labels:
+        app: notifications-worker
+    spec:
+      containers:
+        - name: notifications-worker
+          image: ghcr.io/vishant0815/shopverse-notifications:latest
+          env:
+            - name: DB_NAME
+              value: "notifications_db"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_PASSWORD
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+            - name: SMTP_HOST
+              value: "mailpit"
+            - name: SMTP_PORT
+              value: "1025"
+            - name: MAIL_FROM
+              valueFrom:
+                configMapKeyRef:
+                  name: shopverse-config
+                  key: MAIL_FROM
+            - name: SITE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: shopverse-config
+                  key: SITE_URL
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  labels:
+    app: mailpit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mailpit
+  template:
+    metadata:
+      labels:
+        app: mailpit
+    spec:
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:latest
+          ports:
+            - name: smtp
+              containerPort: 1025
+            - name: http
+              containerPort: 8025
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  labels:
+    app: mailpit
+spec:
+  selector:
+    app: mailpit
+  ports:
+    - name: smtp
+      port: 1025
+      targetPort: 1025
+    - name: http
+      port: 8025
+      targetPort: 8025

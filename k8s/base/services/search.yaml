@@ -1,0 +1,155 @@
+# Search service (FastAPI), its Kafka consumer, and the single-node Elasticsearch it uses. Only the
+# search services reach Elasticsearch; the index is created by the search service with its own mapping.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search
+  labels:
+    app: search
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: search
+  template:
+    metadata:
+      labels:
+        app: search
+    spec:
+      containers:
+        - name: search
+          image: ghcr.io/vishant0815/shopverse-search:latest
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: ES_URL
+              value: "http://elasticsearch:9200"
+            - name: SEARCH_INDEX
+              value: "products"
+          readinessProbe:
+            httpGet:
+              path: "/health"
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search
+  labels:
+    app: search
+spec:
+  selector:
+    app: search
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-worker
+  labels:
+    app: search-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: search-worker
+  template:
+    metadata:
+      labels:
+        app: search-worker
+    spec:
+      containers:
+        - name: search-worker
+          image: ghcr.io/vishant0815/shopverse-search:latest
+          command: ["python", "-m", "app.worker"]
+          env:
+            - name: ES_URL
+              value: "http://elasticsearch:9200"
+            - name: SEARCH_INDEX
+              value: "products"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  labels:
+    app: elasticsearch
+spec:
+  clusterIP: None
+  selector:
+    app: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch
+  labels:
+    app: elasticsearch
+spec:
+  serviceName: elasticsearch
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      # The Elasticsearch image runs as uid 1000, which must be able to write the volume.
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+          ports:
+            - name: http
+              containerPort: 9200
+          env:
+            - name: discovery.type
+              value: single-node
+            - name: xpack.security.enabled
+              value: "false"
+            - name: action.auto_create_index
+              value: "false"
+            - name: ES_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+          readinessProbe:
+            tcpSocket:
+              port: 9200
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

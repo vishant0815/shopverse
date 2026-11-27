@@ -6,3 +6,14 @@ resources:
   - postgres.yaml
   - redis.yaml
   - kafka.yaml
+  - services/users.yaml
+  - services/products.yaml
+  - services/orders.yaml
+  - services/payments.yaml
+  - services/inventory.yaml
+  - services/search.yaml
+  - services/clickstream.yaml
+  - services/analytics.yaml
+  - services/gateway.yaml
+  - services/storefront.yaml
+  - services/notifications.yaml

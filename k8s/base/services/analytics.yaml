@@ -1,0 +1,139 @@
+# Analytics: the seller-dashboard API (FastAPI) and the Spark streaming job that feeds it. The job
+# writes Parquet to a volume and the seller tables to analytics_db. The schema comes from the
+# analytics-schema ConfigMap, which scripts/k8s-config.sh creates from infra/postgres/analytics.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics
+  labels:
+    app: analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analytics
+  template:
+    metadata:
+      labels:
+        app: analytics
+    spec:
+      containers:
+        - name: analytics
+          image: ghcr.io/vishant0815/shopverse-analytics-api:latest
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-app
+                  key: JWT_SIGNING_KEY
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/analytics_db"
+          readinessProbe:
+            httpGet:
+              path: "/health"
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics
+  labels:
+    app: analytics
+spec:
+  selector:
+    app: analytics
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-job
+  labels:
+    app: analytics-job
+spec:
+  replicas: 1
+  strategy:
+    # One Spark job writes the volume, so the old pod must stop before the new one starts.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: analytics-job
+  template:
+    metadata:
+      labels:
+        app: analytics-job
+    spec:
+      containers:
+        - name: analytics-job
+          image: ghcr.io/vishant0815/shopverse-analytics-job:latest
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+            - name: ANALYTICS_OUTPUT_DIR
+              value: "/data/analytics"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_PASSWORD
+            - name: ANALYTICS_DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/analytics_db"
+            - name: ANALYTICS_SCHEMA_PATH
+              value: "/schema/schema.sql"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              memory: 2Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data/analytics
+            - name: schema
+              mountPath: /schema
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: analytics-data
+        - name: schema
+          configMap:
+            name: analytics-schema
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: analytics-data
+  labels:
+    app: analytics-job
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi
