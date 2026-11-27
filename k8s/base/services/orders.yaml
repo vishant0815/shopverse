@@ -1,0 +1,146 @@
+# Orders service (Django) and its checkout-saga worker.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  labels:
+    app: orders
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      containers:
+        - name: orders
+          image: ghcr.io/vishant0815/shopverse-orders:latest
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-app
+                  key: ORDERS_SECRET_KEY
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-app
+                  key: JWT_SIGNING_KEY
+            - name: DJANGO_DEBUG
+              valueFrom:
+                configMapKeyRef:
+                  name: shopverse-config
+                  key: DJANGO_DEBUG
+            - name: DJANGO_ALLOWED_HOSTS
+              value: "localhost,127.0.0.1,orders"
+            - name: DB_NAME
+              value: "orders_db"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_PASSWORD
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+            - name: PRODUCTS_SERVICE_URL
+              value: "http://products:8000"
+          readinessProbe:
+            httpGet:
+              path: "/health/"
+              port: 8000
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 6
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders
+  labels:
+    app: orders
+spec:
+  selector:
+    app: orders
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-worker
+  labels:
+    app: orders-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders-worker
+  template:
+    metadata:
+      labels:
+        app: orders-worker
+    spec:
+      containers:
+        - name: orders-worker
+          image: ghcr.io/vishant0815/shopverse-orders:latest
+          command: ["python", "manage.py", "run_worker"]
+          env:
+            - name: DJANGO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-app
+                  key: ORDERS_SECRET_KEY
+            - name: JWT_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-app
+                  key: JWT_SIGNING_KEY
+            - name: DJANGO_DEBUG
+              valueFrom:
+                configMapKeyRef:
+                  name: shopverse-config
+                  key: DJANGO_DEBUG
+            - name: DJANGO_ALLOWED_HOSTS
+              value: "localhost,127.0.0.1,orders"
+            - name: DB_NAME
+              value: "orders_db"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: shopverse-postgres
+                  key: POSTGRES_PASSWORD
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+            - name: PRODUCTS_SERVICE_URL
+              value: "http://products:8000"
