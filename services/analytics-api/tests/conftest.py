@@ -21,8 +21,15 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 
-# The schema is shared with the Spark job, so the tests read the same file.
-SCHEMA = Path(__file__).resolve().parents[3] / "infra" / "postgres" / "analytics" / "schema.sql"
+# The schema is shared with the Spark job, so the tests read the same file. In the container the
+# repo's infra/ folder is not present: compose mounts the schema at /schema and sets its path.
+# A local run finds it in the repo.
+_schema_override = os.environ.get("ANALYTICS_SCHEMA_PATH")
+SCHEMA = (
+    Path(_schema_override)
+    if _schema_override
+    else Path(__file__).resolve().parents[3] / "infra" / "postgres" / "analytics" / "schema.sql"
+)
 
 
 @pytest.fixture

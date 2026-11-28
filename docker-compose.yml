@@ -681,6 +681,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/analytics_db
       # Read only by `docker compose run analytics pytest`. The tests empty this database.
       ANALYTICS_TEST_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/analytics_test
+      ANALYTICS_SCHEMA_PATH: /schema/schema.sql
+    volumes:
+      - ./infra/postgres/analytics:/schema:ro
     ports:
       - "${ANALYTICS_PORT:-8008}:8000"
     depends_on:
