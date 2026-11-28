@@ -516,10 +516,14 @@ services:
     environment:
       ES_URL: http://elasticsearch:9200
       SEARCH_INDEX: products
+      # The search tests run against the real Elasticsearch and Kafka (services/search/tests/conftest.py).
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     ports:
       - "${SEARCH_PORT:-8006}:8000"
     depends_on:
       elasticsearch:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -675,6 +679,11 @@ services:
     environment:
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/analytics_db
+      # Read only by `docker compose run analytics pytest`. The tests empty this database.
+      ANALYTICS_TEST_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/analytics_test
+      ANALYTICS_SCHEMA_PATH: /schema/schema.sql
+    volumes:
+      - ./infra/postgres/analytics:/schema:ro
     ports:
       - "${ANALYTICS_PORT:-8008}:8000"
     depends_on:
