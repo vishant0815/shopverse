@@ -7,3 +7,4 @@ pydantic-settings==2.16.2
 PyJWT==2.15.0
 httpx==0.28.1
 stripe==12.5.2
+confluent-kafka==2.16.1
