@@ -291,7 +291,7 @@ docker compose run --rm orders pytest      # 77 tests
 docker compose run --rm payments pytest    # 46 tests
 ```
 
-Tests will run automatically on every pull request once CI is added (see roadmap).
+[GitHub Actions](.github/workflows/ci.yml) runs every suite on each pull request and each push to `main`, then builds the images. Pushes to `main` also publish them to GitHub Container Registry.
 
 ---
 
